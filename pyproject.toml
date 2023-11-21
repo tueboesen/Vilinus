@@ -1,0 +1,16 @@
+[tool.poetry]
+name = "vilinus"
+version = "0.1.0"
+description = ""
+authors = ["Tue Boesen <tue.boesen@protonmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+networkx = "^3.2.1"
+numpy = "^1.26.2"
+matplotlib = "^3.8.2"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
