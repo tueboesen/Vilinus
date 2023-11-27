@@ -9,6 +9,7 @@ class Sectors:
         self.owners = owners
         self.values = values
         self.edges = edges
+        self._id_dict = dict(zip(self.names,self.ids))
 
         n = len(self.ids)
         assert n == len(owners)
@@ -16,11 +17,13 @@ class Sectors:
         assert len(names) == len(set(names))
 
         G = nx.Graph()
-        for name in self.names:
-            G.add_node(name)
+        for sector_id in self.ids:
+            G.add_node(sector_id)
 
         for (source, dest, weight) in edges:
-            G.add_edge(source.lower(), dest.lower(), weight=weight)
+            source_id = self.name_id(source)
+            dest_id = self.name_id(dest)
+            G.add_edge(source_id, dest_id, weight=weight)
         self.G = G
         pos = nx.spring_layout(G, seed=7, k=10)  # positions for all nodes - seed for reproducibility
         self.pos = pos
@@ -29,26 +32,18 @@ class Sectors:
             pos_shift[key] = val + [0,0.2]
         self.pos_shift = pos_shift
         self.color_ids = {0: 'blue', 1: 'red', 2:'green', 3:'orange'}
+        self.being_captured = np.zeros(n,dtype=bool)
+
+
+
+    def name_id(self,name):
+        return self._id_dict[name.lower()]
+
 
     def node_colors(self):
         colors = [self.color_ids[owner] for owner in self.owners]
         return colors
 
-
-    def find_shortest_path(self,source,destination):
-        """
-        Calculates the shortest path between two nodes
-        We do not account for different travel times for different factions for now.
-        """
-        G = self.G
-        paths = nx.shortest_path(G,source.lower(),destination.lower())
-        # TODO check that weights are used
-        # distances = [G.edges[source,paths[0]]['weight']]
-        distances = []
-        npaths = len(paths)
-        for i in range(1,npaths):
-            distances.append(G.edges[paths[i-1],paths[i]]['weight'])
-        return paths, distances
 
     def time_step(self):
         pass
