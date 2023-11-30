@@ -1,72 +1,59 @@
-#!/usr/bin/env python3
+import asyncio
+from time import sleep
 
-import sys
-import socket
-import selectors
-import types
+import aioconsole
 
-sel = selectors.DefaultSelector()
+async def logon(username,password,reader,writer):
 
+    writer.write(username.encode())
+    await writer.drain()
 
-def start_connections(host, port,messages):
-    messages_b = [message.encode('ascii') for message in messages]
-    server_addr = (host, port)
-    print(f"Starting connection to {server_addr}")
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.setblocking(False)
-    sock.connect_ex(server_addr)
-    events = selectors.EVENT_READ | selectors.EVENT_WRITE
-    data = types.SimpleNamespace(
-        msg_total=sum(len(m) for m in messages_b),
-        recv_total=0,
-        messages=messages_b.copy(),
-        outb=b"",
-    )
-    sel.register(sock, events, data=data)
+    data_b = await reader.read(100)
+    message = data_b.decode()
+    if message != 'username accepted':
+        writer.close()
+        await writer.wait_closed()
+        raise ValueError(f"username not accepted. {message}")
 
+    writer.write(password.encode())
+    await writer.drain()
 
+    data_b = await reader.read(100)
+    message = data_b.decode()
+    if message != 'password accepted':
+        writer.close()
+        await writer.wait_closed()
+        raise ValueError(f"password not accepted. {message}")
+    return
 
-def service_connection(key, mask):
-    sock = key.fileobj
-    data = key.data
-    if mask & selectors.EVENT_READ:
-        recv_data = sock.recv(1024)  # Should be ready to read
-        if recv_data:
-            print(f"Server replied: {recv_data!r} ")
-            data.recv_total += len(recv_data)
-        if not recv_data or data.recv_total == data.msg_total:
-            print(f"Closing connection")
-            # print(f"Closing connection {data.connid}")
-            sel.unregister(sock)
-            sock.close()
-    if mask & selectors.EVENT_WRITE:
-        if not data.outb and data.messages:
-            data.outb = data.messages.pop(0)
-        if data.outb:
-            print(f"Sending {data.outb!r}")
-            sent = sock.send(data.outb)  # Should be ready to write
-            data.outb = data.outb[sent:]
-
-
-host = '127.0.0.1'
-port = 54657
-username = "MortenLarsen"
-password = 'horse'
-
-while True:
-    command = input("input command:")
-    messages = [f"{username}", f"{password}", f"{command}"]
-    start_connections(host, int(port), messages)
+async def vibinus_game_client(hostname, port, username,password):
+    reader, writer = await asyncio.open_connection(hostname, port)
     try:
-        while True:
-            events = sel.select(timeout=300)
-            if events:
-                for key, mask in events:
-                    service_connection(key, mask)
-            # Check for a socket being monitored to continue.
-            if not sel.get_map():
-                break
-    except KeyboardInterrupt:
-        print("Caught keyboard interrupt, exiting")
-    finally:
-        sel.close()
+        await logon(username, password, reader, writer)
+    except Exception as e:
+        print(f"{e}")
+        return
+
+    while True:
+        line = await aioconsole.ainput('Enter command:')
+
+        print(f'Send: {line!r}')
+        writer.write(line.encode())
+        await writer.drain()
+
+        data_b = await reader.read(100)
+        data = data_b.decode()
+        print(f'Received: {data!r}')
+        if data == 'closing connection':
+            print('Disconnecting from server...')
+            writer.close()
+            await writer.wait_closed()
+            break
+
+
+if __name__ == '__main__':
+    username = 'private'
+    password = '123'
+    hostname = '127.0.0.1'
+    port = '8888'
+    asyncio.run(vibinus_game_client(hostname,port,username,password))

@@ -3,13 +3,20 @@ import numpy as np
 
 
 class Sectors:
-    def __init__(self,names,owners, values,edges):
-        for name in names:
+    def __init__(self,sectors,edges):
+        n = len(sectors)
+        self.names = []
+        owners = []
+        values = []
+        for name, (owner, value) in sectors.items():
             assert ' ' not in name, f"{name} has a space character in it. Node names need to be a single word"
-        self.names = [name.lower() for name in names]
-        self.ids = np.arange(len(names))
-        self.owners = owners
-        self.values = values
+            self.names.append(name.lower())
+            owners.append(owner)
+            values.append(value)
+
+        self.ids = np.arange(len(self.names))
+        self.owners = np.asarray(owners)
+        self.values = np.asarray(values)
         self.edges = edges
         self._id_dict = dict(zip(self.names,self.ids))
 
@@ -17,7 +24,7 @@ class Sectors:
         self.battle = np.zeros(n,dtype=bool)
         assert n == len(owners)
         assert n == len(values)
-        assert len(names) == len(set(names))
+        assert len(self.names) == len(set(self.names))
 
         G = nx.Graph()
         for sector_id in self.ids:
@@ -37,7 +44,8 @@ class Sectors:
         self.color_ids = {0: 'blue', 1: 'red', 2:'green', 3:'orange', 4:'grey', 5:'purple'}
         self.being_captured = np.zeros(n,dtype=bool)
 
-
+    def __len__(self):
+        return len(self.ids)
 
     def name_id(self,name):
         try:

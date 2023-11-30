@@ -1,57 +1,86 @@
-#!/usr/bin/env python3
+import asyncio
+import numpy as np
 
-import sys
-import socket
-import selectors
-import types
-
-sel = selectors.DefaultSelector()
+from game import Vibinus
 
 
-def accept_wrapper(sock):
-    conn, addr = sock.accept()  # Should be ready to read
-    print(f"Accepted connection from {addr}")
-    conn.setblocking(False)
-    data = types.SimpleNamespace(addr=addr, inb=b"", outb=b"")
-    events = selectors.EVENT_READ | selectors.EVENT_WRITE
-    sel.register(conn, events, data=data)
+class VibinusServer:
 
+    def __init__(self,game: Vibinus):
+        self.game = game
 
-def service_connection(key, mask):
-    sock = key.fileobj
-    data = key.data
-    if mask & selectors.EVENT_READ:
-        recv_data = sock.recv(1024)  # Should be ready to read
-        if recv_data:
-            data.outb += recv_data
+    async def close_connection(self,writer,message,user_id=None):
+        writer.write(message.encode())
+        await writer.drain()
+        writer.close()
+        addr = writer.get_extra_info('peername')
+        if user_id is None:
+            username = ''
         else:
-            print(f"Closing connection to {data.addr}")
-            sel.unregister(sock)
-            sock.close()
-    if mask & selectors.EVENT_WRITE:
-        if data.outb:
-            print(f"Echoing {data.outb!r} to {data.addr}")
-            sent = sock.send(data.outb)  # Should be ready to write
-            data.outb = data.outb[sent:]
+            username = self.game.usernames[user_id]
+        print(f"{message} to {username} connected from {addr!r}")
+        await writer.wait_closed()
 
-host = '127.0.0.1'
-port = 54657
-lsock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-lsock.bind((host, port))
-lsock.listen()
-print(f"Listening on {(host, port)}")
-lsock.setblocking(False)
-sel.register(lsock, selectors.EVENT_READ, data=None)
+    async def client_authentication(self,reader,writer):
+        data = await reader.read(100)
+        username = data.decode()
+        if username in self.game.usernames:
+            idx = self.game.usernames.index(username)
+            writer.write("username accepted".encode())
+            await writer.drain()
+        else:
+            message = f"username: {username} not accepted"
+            await self.close_connection(writer, message)
+            return -1
 
-try:
-    while True:
-        events = sel.select(timeout=None)
-        for key, mask in events:
-            if key.data is None:
-                accept_wrapper(key.fileobj)
+        data = await reader.read(100)
+        password = data.decode()
+        if password == self.game.passwords[idx]:
+            writer.write("password accepted".encode())
+            await writer.drain()
+        else:
+            message = "password not accepted"
+            await self.close_connection(writer, message)
+            return -1
+        return idx
+
+
+    async def game_server(self,reader, writer):
+        user_id = await self.client_authentication(reader, writer)
+        addr = writer.get_extra_info('peername')
+        print(f"{self.game.usernames[user_id]} logged on from {addr!r}")
+
+        while True:
+            data = await reader.read(100)
+            command = data.decode()
+            if command == 'quit':
+                await self.close_connection(writer, 'closing connection', user_id)
+                break
             else:
-                service_connection(key, mask)
-except KeyboardInterrupt:
-    print("Caught keyboard interrupt, exiting")
-finally:
-    sel.close()
+                try:
+                    message = self.game.parse_command(user_id, command)
+                except Exception as e:
+                    message = f"command failed. {e}"
+
+                addr = writer.get_extra_info('peername')
+                print(f"Received {message!r} from {addr!r}")
+
+                writer.write(message.encode())
+                await writer.drain()
+
+    async def main(self):
+        server = await asyncio.start_server(self.game_server, '127.0.0.1', 8888)
+
+        addrs = ', '.join(str(sock.getsockname()) for sock in server.sockets)
+        print(f'Serving on {addrs}')
+
+        async with server:
+            await server.serve_forever()
+
+
+def run_server_async(server):
+    asyncio.run(server.main())
+
+if __name__ == '__main__':
+    info = 'test'
+    vib = VibinusServer(info)
