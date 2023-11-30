@@ -1,7 +1,6 @@
 import asyncio
-import numpy as np
 
-from game import Vibinus
+from src.game import Vibinus
 
 
 class VibinusServer:

@@ -1,3 +1,14 @@
+"""
+Here we define the world the game takes place in.
+
+zones are defined in a dictionary where the name of the zone is the key,
+and to each key is attached a tuple which specifies the faction the sector belongs to, as well as the value of the sector
+
+roads connect different zones and are specified as a list of tuples ('zone1','zone2',length_of_road)
+roads are unidirectional, meaning that travel is possible in both directions.
+
+"""
+
 zones = {'Mordor': (0, 1.0),
            'Gondor': (1, 1.0),
            'Shire': (2, 1.0),

@@ -1,3 +1,4 @@
+import pickle
 from time import sleep
 
 import numpy as np
@@ -5,10 +6,13 @@ from matplotlib import pyplot as plt
 
 
 class Vibinus:
-    def __init__(self,armies, sectors, auth_dict, dt=0.1):
+    def __init__(self,armies, sectors, auth_dict, file, dt=0.1):
+        self.filename = file
         self.running = False
         self.dt = dt
+        self.autosave_every_n_seconds = 3
         self.t = 0.0
+        self._t_last_save = 0.0
         self.armies = armies
         self.sectors = sectors
         self.auth = auth_dict
@@ -26,6 +30,17 @@ class Vibinus:
             self.army_id[i] = info[3]
         self.ids = np.arange(n)
         self._id_dict = dict(zip(self.usernames,self.ids))
+
+    def save(self):
+        with open(self.filename, 'wb') as outp:
+            pickle.dump(self, outp, pickle.HIGHEST_PROTOCOL)
+        print(f"saved state to {self.filename}")
+
+    @staticmethod
+    def load(filename):
+        with open(filename, 'rb') as inp:
+            game = pickle.load(inp)
+        return game
 
     def user_id(self,name):
         return self._id_dict[name]
@@ -180,6 +195,9 @@ class Vibinus:
                 self.t += dt
                 self.armies.time_step(dt)
                 self.draw_game()
+                if (self.t - self._t_last_save) > self.autosave_every_n_seconds:
+                    self.save()
+                    self._t_last_save = self.t
                 #
                 # plt.clf()
                 # sectors.draw()
