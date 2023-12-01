@@ -4,7 +4,7 @@ image_name = 'world.jpg'
 import numpy as np
 import matplotlib.pyplot as plt
 
-sectors = {'Europe': ((7.5,6),[(6,5),(9,5),(9,8),(9,4.5)]),
+sectors = {'Europe': ((7.5,6),[(6.0,5),(9,5),(9,8),(5.5,8.5)]),
                'Africa': ((5.5,4),[]),
                "Australia": ((8.1,2.8),[]),
                "S_America": ((3,3),[]),
@@ -23,7 +23,6 @@ roads = [('Europe', 'Africa',15,(5.7,4.8)),
 
 
 
-# datafile = 'lena.jpg'
 img = plt.imread(image_name)
 
 xs = []
@@ -40,9 +39,9 @@ for (x,y),polygon in sectors.values():
             yps.append(yp)
         xps = np.asarray(xps)
         yps = np.asarray(yps)
-        plt.fill(xps, yps, alpha=0.7)
+        plt.fill(xps, yps, alpha=0.3)
 
-plt.show()
+# plt.show()
 xs = np.asarray(xs)
 ys = np.asarray(ys)
 
