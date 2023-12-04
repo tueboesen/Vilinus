@@ -1,8 +1,11 @@
 import pickle
+import random
 from time import sleep
 
 import numpy as np
 from matplotlib import pyplot as plt
+
+from src.utils import InsufficientAccess
 
 
 class Vibinus:
@@ -21,6 +24,7 @@ class Vibinus:
         self.passwords = []
         self.access_level = -1 * np.ones(n, dtype=int)
         self.team = -1 * np.ones(n,dtype=int)
+        self.rearm_list = ['100','base','base+','full']
         self.army_id = -1 * np.ones(n,dtype=int)
         for i, (user, info) in enumerate(auth_dict.items()):
             self.usernames.append(user)
@@ -45,55 +49,171 @@ class Vibinus:
     def user_id(self,name):
         return self._id_dict[name]
 
-    def parse_command(self, user_id, command_str, execute_command=True):
+    def get_name_and_id(self,name_or_id,mode):
+        try:
+            id = int(name_or_id)
+            if mode == 'team':
+                name = self.armies.team_names[id]
+            elif mode == 'army':
+                name = self.armies.names[id]
+            elif mode == 'sector':
+                name = self.sectors.names[id]
+            else:
+                raise NotImplementedError(f"{mode} not implemented")
+        except:
+            name = name_or_id
+            if mode == 'team':
+                id = self.armies.team_name_id(name)
+            elif mode == 'army':
+                id = self.armies.name_id(name)
+            elif mode == 'sector':
+                id = self.sectors.name_id(name)
+            else:
+                raise NotImplementedError(f"{mode} not implemented")
+        return name, id
+
+    def parse_command(self, user_id, args, execute_command=True):
         """
         We evaluate that the command exist and is allowed to be called by the user.
         Furthermore we evaluate that the command has the required amount of arguments and that those arguments are potentially valid (sector names are spelled correctly ect.)
         """
-        args = command_str.split(" ")
         command = args.pop(0)
 
         access_level = self.access_level[user_id]
         if command == 'move':
-            if access_level in [0,1]: #user iser admin or team
+            if access_level in [0,1]: #user is admin or team
                 assert len(args) == 2
                 army_name_or_id = args.pop(0)
-                try:
-                    army_id = int(army_name_or_id)
-                    army_name = self.armies.names[army_id]
-                except:
-                    army_name = army_name_or_id
-                    army_id = self.armies.name_id(army_name)
+                army_name, army_id = self.get_name_and_id(army_name_or_id,'army')
             else:
                 army_id = self.army_id[user_id]
                 army_name = self.armies.names[army_id]
                 assert len(args) == 1
                 args = args[0]
-            try:
-                sector_id = int(args)
-                sector_name = self.sectors.names[sector_id]
-            except:
-                sector_id = self.sectors.name_id(args)
-                sector_name = args
+            sector_name, sector_id = self.get_name_and_id(args,'sector')
             command_fn = self.armies.move_army
             command_args = (army_name, [sector_name])
-        elif command == 'takeover':
-            if army_id is not None:
+        elif command == 'capture':
+            if access_level in [2,3]: # army_id is fixed
+                army_id = self.army_id[user_id]
                 army_name = self.armies.names[army_id]
                 assert len(args) == 0
             else:
                 assert len(args) == 1
-                army_name_or_id = args.pop(0)
-                try:
-                    army_id = int(army_name_or_id)
-                    army_name = self.armies.names[army_id]
-                except:
-                    army_name = army_name_or_id
-                    army_id = self.armies.name_id(army_name)
+                army_name, army_id = self.get_name_and_id(args[0],'army')
             command_fn = self.armies.takeover_sector
             command_args = (army_name,)
+        elif command == 'ally':
+            if access_level in [0]: # Admin
+                assert len(args) == 2
+                team_1 = args.pop(0)
+                team_2 = args.pop(0)
+                team_1_name, team_1_id = self.get_name_and_id(team_1,'team')
+                team_2_name, team_2_id = self.get_name_and_id(team_2,'team')
+            elif access_level in [1,2]: # Team, Captain
+                assert len(args) == 1
+                team_1_id = self.team[user_id]
+                team_1_name = self.armies.team_names[team_1_id]
+                team_2_name, team_2_id = self.get_name_and_id(args[0], 'team')
+            else:
+                raise InsufficientAccess("Nop")
+            command_fn = self.armies.set_ally
+            command_args = (team_1_id, team_2_id)
+        elif command == 'queue' or command == 'q':
+            status = self.parse_command(user_id, args, execute_command=False)
+        elif command == 'pause':
+            if access_level in [0]: #Admin
+                self.running = False
+            else:
+                raise InsufficientAccess("Nop")
+        elif command == 'start':
+            if access_level in [0]: #Admin
+                self.running = True
+            else:
+                raise InsufficientAccess("Nop")
+        elif command == 'rearm':
+            if access_level in [0,1]:
+                assert len(args) == 2
+                army = args.pop(0)
+                amount = args.pop(0)
+                army_name, army_id = self.get_name_and_id(army,'army')
+                if access_level in [1]:
+                    assert self.armies.army_team_id[army_id] == self.team[user_id]
+            else:
+                assert len(args) == 1
+                army_id = self.army_id[user_id]
+                amount = args.pop(0)
+            assert amount in self.rearm_list, f"The amount you want to rearm is not recognized. You specified {amount}, which is not part of {self.rearm_list}"
+            command_fn = self.armies.rearm_army
+            command_args = (amount)
+        elif command == 'give':
+            if access_level in [0, 1]:
+                assert len(args) >= 3
+                army_1_name, army_1_id = self.get_name_and_id(args.pop(0), 'army')
+                if access_level in [1]:
+                    assert self.armies.army_team_id[army_1_id] == self.team[user_id]
+            elif access_level in [2,3]:
+                assert len(args) >= 2
+                army_1_id = self.army_id[user_id]
+            army_2_name, army_2_id = self.get_name_and_id(args.pop(0), 'army')
+            item = args.pop(0)
+            if len(args) >= 1:
+                amount = args.pop(0)
+                assert amount > 0, "You cannot transfer negative amount of credits"
+            else:
+                amount = 1
+            if item == 'credit':
+                assert self.armies.credits[army_1_id] >= amount, "You cannot give more credits than you own"
+            else:
+                amount = 1
+                assert item in self.armies.relics[army_1_id], "You cannot give a relic you do not own"
+            command_fn = self.armies.transfer_item
+            command_args = (army_1_id,army_2_id,item,amount)
+        elif command == 'swap':
+            if access_level in [0, 1, 2]:
+                assert len(args) == 2
+                army_1_name, army_1_id = self.get_name_and_id(args.pop(0), 'army')
+                army_2_name, army_2_id = self.get_name_and_id(args.pop(0), 'army')
+                if access_level in [1, 2]:
+                    assert self.armies.army_team_id[army_1_id] == self.team[user_id]
+                    assert self.armies.army_team_id[army_2_id] == self.team[user_id]
+            else:
+                raise InsufficientAccess("Nop")
+            command_fn = self.armies.swap_armies
+            command_args = (army_1_id,army_2_id)
+        elif command == 'retreat':
+            if access_level in [0,1]:
+                army_name, army_id = self.get_name_and_id(args.pop(0), 'army')
+                if access_level in [1]:
+                    assert self.armies.army_team_id[army_id] == self.team[user_id]
+            army_id = self.army_id[user_id]
+            valid_sector_ids = self.armies.get_valid_retreats(army_id)
+            if len(args) == 1:
+                sector_name, sector_id = self.get_name_and_id(args.pop(0), 'sector')
+                assert sector_id in valid_sector_ids, f"{sector_name} is not a valid retreat."
+            else:
+                if len(valid_sector_ids) > 0:
+                    sector_id = random.choice(valid_sector_ids)
+                else:
+                    sector_id = self.sectors.death_id
+
+            command_fn = self.armies.retreat
+            command_args = (army_id,sector_id)
+        elif command == 'status': # army/team, id/name
+            mode = args.pop(0)
+            assert mode in ['army', 'team']
+            assert len(args) == 1
+            name, id = self.get_name_and_id(args.pop(0),mode)
+            if access_level in [1,2,3]:
+                if mode == 'army':
+                    assert self.armies.army_team_id[id] == self.team[user_id]
+                    command_fn = self.armies.status_army
+                else:
+                    assert id == self.team[user_id]
+                    command_fn = self.armies.status_team
+            command_args = (id,)
         else:
-            raise NotImplementedError("command not queueable")
+            raise NotImplementedError("command not recognized")
 
         if execute_command:
             status = command_fn(*command_args)
@@ -102,91 +222,9 @@ class Vibinus:
             self.armies.queue_command(army_id, command_fn, command_args)
             return 'command queued'
 
-
-    #
-    # def user_logon(self,username,password):
-    #     if username in self.auth:
-    #         password_server = self.auth[username][0]
-    #         assert password_server == password, "Password incorrect."
-    #     else:
-    #         raise f"{username} is not a valid username"
-    #     user_id = self.user_id(username)
-    #     user_mode = self.access_level[user_id]
-    #     if user_mode == 0:
-    #         self.admin_prompt(user_id)
-    #     elif user_mode == 1:
-    #         self.team_command(user_id)
-    #     elif user_mode == 2:
-    #         self.captain_prompt(user_id)
-    #     elif user_mode == 3:
-    #         self.private_prompt(user_id)
-    #     else:
-    #         raise "user_mode not recognized"
-
-    def captain_prompt(self, user_id):
-        army_id = self.army_id[user_id]
-        team_id = self.team[user_id]
-        army_name = self.armies.names[army_id]
-        while True:
-            inp = input(f"Logged in as: {self.usernames[user_id]} - enter command")
-            args = inp.split(" ")
-            command = args.pop(0)
-            try:
-                if command.lower() == "move":
-                    self.armies.move_army(army_name, args[0])
-                elif command.lower() == "capture":
-                    self.armies.takeover_sector(army_name)
-                elif command.lower() == "ally":
-                    ally_team_id = self.armies.team_name_id(args[0])
-                    self.armies.set_ally(team_id,ally_team_id)
-                else:
-                    print(f"command: {command.lower()} not recognized.")
-            except Exception as e:
-                print(f"Action failed. {e}")
-
-
-    def private_prompt(self, user_id):
-        army_id = self.army_id[user_id]
-        army_name = self.armies.names[army_id]
-        while True:
-            inp = input(f"Logged in as: {self.usernames[user_id]} - enter command")
-            args = inp.split(" ")
-            command = args.pop(0)
-            try:
-                if command.lower() == "move":
-                    self.armies.move_army(army_name, args[0])
-                elif command.lower() == "capture":
-                    self.armies.takeover_sector(army_name)
-                elif command.lower() == "queue" or command.lower() == "q":
-                    army_id, command_fn, command_args = self.parse_command(user_id, args, army_id)
-                    self.armies.queue_command(army_id, command_fn, command_args)
-                elif command.lower() == 'exit':
-                    break
-                else:
-                    print(f"command: {command.lower()} not recognized.")
-            except Exception as e:
-                print(f"Action failed. {e}")
-
-    def admin_prompt(self, user_id):
-        while True:
-            inp = input(f"Logged in as: {self.usernames[user_id]} - enter command")
-            args = inp.split(" ")
-            command = args.pop(0)
-            if command.lower() == 'start':
-                self.running = True
-            elif command.lower() == 'pause':
-                self.running = False
-            elif command.lower() == "move":
-                try:
-                    assert len(args) > 1, f'admin move command needs two arguments: (army) (location). You provided: {args}'
-                    self.armies.move_army(args[0], args[1])
-                except Exception as e:
-                    print(f"Action failed. {e}")
-            else:
-                print(f"command: {command.lower()} not recognized.")
-
     def run_game(self):
         dt = self.dt
+        self.draw_game()
         self.running = True
         while True:
             sleep(dt)
@@ -223,6 +261,16 @@ class Vibinus:
         # plt.show()
         plt.pause(0.01)
 
+
+    def update_game(self):
+        self.armies.draw()
+        # ax = plt.gca()
+        plt.title(f"time = {self.t:4.1f}s")
+        # ax.margins(0.08)
+        # plt.axis("off")
+        # plt.tight_layout()
+        # plt.show()
+        plt.pause(0.01)
 
 
 

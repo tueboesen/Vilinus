@@ -1,0 +1,2 @@
+class InsufficientAccess(Exception):
+    pass

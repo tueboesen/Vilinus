@@ -2,10 +2,11 @@ from ast import literal_eval
 
 import networkx as nx
 import numpy as np
+from matplotlib import pyplot as plt
 
 
 class Armies:
-    def __init__(self,teams,sectors):
+    def __init__(self,teams,sectors,color_dict):
         n = 0
         for i, team in enumerate(teams):
             if len(team) > 1:
@@ -16,9 +17,11 @@ class Armies:
         self.team_names = []
         self.names = []
         self.paths = []
-        self.values = np.ones(n)
+        self.str = np.ones(n)
         self.low_supplies = np.zeros(n,dtype=bool)
         self.army_team_id = -1 * np.ones(n,dtype=int)
+        self.credits = np.zeros(n,dtype=float)
+        self.relics = [[] for _ in range(n)]
 
         c = 0
         for i, team in enumerate(teams):
@@ -27,7 +30,7 @@ class Armies:
                 for army in team[1]:
                     self.names.append(army[0].lower())
                     self.paths.append([self.sectors.name_id(army[1].lower())])
-                    self.values[c] = army[2]
+                    self.str[c] = army[2]
                     self.army_team_id[c] = i
                     c += 1
         self._sources = -1 * np.ones(n,dtype=int)
@@ -37,7 +40,7 @@ class Armies:
         self._desired_allies = -1 * np.ones(self.n_teams,dtype=int)
         self._ids = np.arange(n)
         self._team_ids = np.arange(self.n_teams)
-        self.speeds = 0.1*np.ones(n) # If you want some armies to move faster than others change this
+        self.speeds = 10*np.ones(n) # If you want some armies to move faster than others change this
         self.capture_speeds = 0.1 * np.ones(n)
         # self.paths = [[location.lower()] for location in locations]# the full path starting from where we are to where we are going, if we are not moving then it only has our current location
         self.moving = np.zeros(n,dtype=bool)
@@ -54,15 +57,106 @@ class Armies:
             G.add_node(i)
         self.G = G
         self.positions = [self.sectors.pos[source] for source in self.sources]
-        self.color_ids = {0: 'blue', 1: 'red', 2: 'green', 3: 'orange'}
+        self.color_ids = color_dict
         self.modes = ['passive']*n
         self.auto_takeover_sectors = np.ones(n,dtype=bool)
+        self.draw_initial()
+
+    def status_army(self,army_id):
+        bonus_msg = ''
+        progress_msg = f' Action is {self.progress[army_id]*100:2.2f}% done.'
+        if self.moving[army_id]:
+            action = 'moving'
+            bonus_msg = f" from sector {self.paths_name[army_id][0]} to {self.paths_name[army_id][1]}."
+        elif self.capturing[army_id]:
+            action = 'capturing'
+        elif self.fighting[army_id]:
+            action = 'fighting'
+        elif self.rearming[army_id]:
+            action = 'rearming'
+        else:
+            action = 'idle'
+            progress_msg = ''
+        status = f"{self.names[army_id]} is currently {action}{bonus_msg}.{progress_msg}"
+        return status
+
+    def status_team(self,team_id):
+        status = (f"{self.team_names[team_id]} currently control {len(sectors)}, which generate {x} credits and {y} victory points pr minute."
+                  f"The team currently has {xx} credits and {yy} victory points.")
+        return status
+
+
 
     def queue_command(self,army_id, fn, args):
         self._command_queue[army_id].append((fn, args))
 
+    def transfer_item(self,army_id1,army_id2, item, amount):
+        if item == 'credit':
+            assert amount > 0, "You cannot transfer negative amount of credits"
+            assert self.credits[army_id1] >= amount, f"{self.names[army_id1]} has insufficient credits. Tried to transfer {amount} credits, but had {self.credits[army_id1]} credits available."
+            self.credits[army_id1] -= amount
+            self.credits[army_id2] += amount
+        else:
+            self.relics[army_id1].remove(item)
+            self.relics[army_id2].append(item)
+        return
+
+    def swap_armies(self,army_id1, army_id2):
+        assert self.idle[army_id1] == self.idle[army_id2] == True, "Both armies need to be idle for a swap to happen."
+        self.paths[army_id1], self.paths[army_id2] = self.paths[army_id2], self.paths[army_id1]
+        self.positions[army_id1], self.positions[army_id2] = self.positions[army_id2], self.positions[army_id1]
+        return
+
+    def get_valid_retreats(self,army_id):
+        assert self.fighting[army_id], f'Failed to get retreat sectors. Army {self.names[army_id]} is not currently fighting.'
+        team_id = self.army_team_id[army_id]
+
+        m_nn = list(self.sectors.G.neighbors(self.sources[army_id]))
+        m_friendly_sector = self.sectors.owners == team_id | self.sectors.owners == self.team_allies[team_id]
+
+        m = m_nn * m_friendly_sector
+        valid_sector_ids = self.sectors.ids[m]
+        remove_sectors = np.zeros(len(valid_sector_ids),dtype=bool) # We remove sectors that does not have the required supply
+        for i, sector_id in enumerate(valid_sector_ids):
+            path = [self.paths[army_id][0], sector_id]
+            try:
+                self.check_legal_move(army_id, path)
+            except:
+                remove_sectors[i] = True
+        return valid_sector_ids
+
+    def retreat(self,army_id,sector_id):
+        assert self.fighting[army_id], f'Failed to retreat army. Army {self.names[army_id]} is not currently fighting.'
 
 
+        if sector_id == self.sectors.death_id:
+            self.fighting[army_id] = False
+            self.paths[army_id] = [sector_id]
+            self.positions[army_id] = self.sectors.pos[sector_id]
+        else:
+            assert sector_id in self.get_valid_retreats(army_id), f"Failed to retreat army {self.names[army_id]} to sector {self.sectors.names[sector_id]}. Sector {self.sectors.names[sector_id]} is not a valid retreat path."
+            self.fighting[army_id] = False
+            self.move_army(army_id,sector_id)
+        if not self.check_for_battle(sector_id):
+            m_armies_in_area = self.sources == sector_id
+            self.fighting[m_armies_in_area] = False
+            self.sectors.battle[sector_id] = False
+        return
+
+    def check_for_battle(self,sector_id):
+        m_armies_in_area = self.sources == sector_id
+        army_factions = self.army_team_id[m_armies_in_area]
+        factions = np.unique(army_factions)
+        if len(factions) < 2:
+            battle = False
+        elif len(factions) >2:
+            battle = True
+        else:
+            if factions[1] == self.team_allies[factions[0]]:
+                battle = False
+            else:
+                battle = True
+        return battle
 
     def set_ally(self, team_id, ally_team_id):
         m_team = self.army_team_id == team_id
@@ -90,11 +184,6 @@ class Armies:
     @property
     def pos(self):
         return dict(zip(self._ids,self.positions))
-
-    # @property
-    # def sources_name(self):
-    #     sources = [path[0] for path in self.paths_name]
-    #     return sources
 
     @property
     def sources(self):
@@ -221,10 +310,6 @@ class Armies:
             m_ally = 0
         alliance_armies_in_area = np.sum(m_team) + np.sum(m_ally)
         return alliance_armies_in_area
-
-
-
-
 
     def check_legal_move(self,id,path):
         team_id = self.army_team_id[id]
@@ -377,7 +462,7 @@ class Armies:
                         self.moving[i] = False
             elif self.capturing[i]: # Continue capturing
                 loc = self.paths[i][0]
-                self.progress[i] += dt * self.capture_speeds[i] / self.sectors.values[loc]
+                self.progress[i] += dt * self.capture_speeds[i] / self.sectors.str[loc]
                 if self.progress[i] >= 1:
                     self.progress[i] = 0
                     self.sectors.owners[loc] = self.army_team_id[i]
@@ -407,15 +492,36 @@ class Armies:
                     except Exception as e:
                         print(f"queued action failed. {e}")
 
+    def draw_initial(self):
+        for i in range(len(self)):
+            if len(self.paths[i]) > 1:
+                s = self.paths[i][0]
+                d = self.paths[i][1]
+                pos_source = self.sectors.pos[s]
+                pos_dest = self.sectors.pos[d]
+                self.positions[i] = (pos_dest - pos_source) * self.progress[i] + pos_source
+        pos = self.pos
+        self._army_boxes = []
+        self._army_texts = []
+        for army_id, xy in enumerate(self.positions):
+            self._army_boxes.append(dict(boxstyle="circle", fc="gray", ec=self.color_ids[army_id], lw=2, alpha=0.5))
+            self._army_texts.append(plt.text(*xy, str(army_id), ha="center", va="center",size=10, bbox=self._army_boxes[-1]))
+
+        # nx.draw_networkx_nodes(self.G, self.pos, node_color=self.colors, edgecolors='black')
+        # nx.draw_networkx_labels(self.G, self.pos, font_size=10, font_family="sans-serif")
 
     def draw(self):
-            for i in range(len(self)):
-                if len(self.paths[i]) > 1:
-                    s = self.paths[i][0]
-                    d = self.paths[i][1]
-                    pos_source = self.sectors.pos[s]
-                    pos_dest = self.sectors.pos[d]
-                    self.positions[i] = (pos_dest - pos_source) * self.progress[i] + pos_source
-
-            nx.draw_networkx_nodes(self.G, self.pos, node_color=self.colors, edgecolors='black')
-            nx.draw_networkx_labels(self.G, self.pos, font_size=10, font_family="sans-serif")
+        for i in range(len(self)):
+            if len(self.paths[i]) > 1:
+                s = self.paths[i][0]
+                d = self.paths[i][1]
+                pos_source = self.sectors.pos[s]
+                pos_dest = self.sectors.pos[d]
+                self.positions[i] = (pos_dest - pos_source) * self.progress[i] + pos_source
+        pos = self.pos
+        for army_id, xy in enumerate(self.positions):
+            tt = self._army_texts[army_id]
+            tt.set_x(xy[0])
+            tt.set_y(xy[1])
+        nx.draw_networkx_nodes(self.G, self.pos, node_color=self.colors, edgecolors='black')
+        nx.draw_networkx_labels(self.G, self.pos, font_size=10, font_family="sans-serif")

@@ -57,7 +57,8 @@ class VibinusServer:
                 break
             else:
                 try:
-                    message = self.game.parse_command(user_id, command)
+                    args = command.split(" ")
+                    message = self.game.parse_command(user_id, args)
                 except Exception as e:
                     message = f"command failed. {e}"
 
