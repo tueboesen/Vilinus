@@ -4,9 +4,12 @@ import os.path
 
 from matplotlib import pyplot as plt
 
+from src.army import Armies
+
 
 class Sectors:
-    def __init__(self, sectors, edges, color_dict, image_path=None,death_id=0):
+    def __init__(self, sectors, edges, color_dict, image_path=None,death_id=0, armies: Armies = None):
+        self.armies = armies
         self.sword_icon = plt.imread('icons/battle.png')
         self.capture_icon = plt.imread('icons/capture.png')
         if image_path:
@@ -20,13 +23,15 @@ class Sectors:
         xys = []
         self.xps = []
         self.yps = []
+        self.sector_bonus = []
         self.death_id = death_id
         self.polygons_given = np.zeros(n,dtype=bool)
-        for i, (name, owner, value, xy, polygon) in enumerate(sectors):
+        for i, (name, army_owner, value, xy, polygon, bonus) in enumerate(sectors):
             assert ' ' not in name, f"{name} has a space character in it. Node names need to be a single word"
             self.names.append(name.lower())
-            owners.append(owner)
+            owners.append(army_owner)
             values.append(value)
+            self.sector_bonus.append(bonus)
             if image_path:
                 xys.append(np.asarray(xy))
             if polygon:
@@ -36,19 +41,26 @@ class Sectors:
                 for xp,yp in polygon:
                     xpsi.append(xp)
                     ypsi.append(yp)
+                xpsi.append(xpsi[0])
+                ypsi.append(ypsi[0])
                 xpsi = np.asarray(xpsi)
                 ypsi = np.asarray(ypsi)
                 self.xps.append(xpsi)
                 self.yps.append(ypsi)
             else:
-                self.xps.append([])
-                self.yps.append([])
+                self.polygons_given[i] = True
+                d = 0.5
+                x,y = xy
+                xpsi = [x - d, x + d, x + d, x - d, x - d]
+                ypsi = [y - d, y - d, y + d, y + d, y - d]
+                self.xps.append(xpsi)
+                self.yps.append(ypsi)
 
 
 
 
         self.ids = np.arange(len(self.names))
-        self.owners = np.asarray(owners)
+        self.army_owner = np.asarray(owners)
         self.values = np.asarray(values)
         self.edges = edges
         self._id_dict = dict(zip(self.names,self.ids))
@@ -97,14 +109,21 @@ class Sectors:
             raise ValueError(f"{name} is not a valid sector.")
         return res
 
-
     def node_colors(self):
-        colors = [self.color_ids[owner] for owner in self.owners]
+        colors = [self.color_ids[self.armies.army_team_id[owner]] for owner in self.army_owner]
         return colors
 
+    def team_owner(self,sector_id):
+        sector_team_id = self.armies.army_team_id[self.army_owner[sector_id]]
+        return sector_team_id
 
-    def time_step(self):
-        pass
+    def time_step(self,dt):
+        for i in self.ids:
+            army_id = self.army_owner[i]
+            team_id = self.armies.army_team_id[army_id]
+            self.armies.credits[army_id] += self.values[i] * dt
+            self.armies.vp[team_id] += self.values[i] * dt
+
 
 
     def draw(self):
@@ -112,8 +131,9 @@ class Sectors:
         if self.image is not None:
             for i, polygon in enumerate(self.polygons_given):
                 if polygon:
-                    plt.fill(self.xps[i], self.yps[i], self.color_ids[self.owners[i]], alpha=0.3)
-                    self.being_captured[i] = True
+                    plt.fill(self.xps[i], self.yps[i], self.color_ids[self.armies.army_team_id[self.army_owner[i]]], alpha=0.3)
+                    if self.armies.army_allies[self.army_owner[i]] != -1:
+                        plt.plot(self.xps[i],self.yps[i],self.color_ids[self.armies.army_allies[self.army_owner[i]]],alpha=0.3)
                 if self.battle[i]:
                     icon = self.sword_icon
                 elif self.being_captured[i]:

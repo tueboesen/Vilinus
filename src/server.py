@@ -1,6 +1,10 @@
 import asyncio
+import logging
 
 from src.game import Vibinus
+from src.utils import RequirementsNotMetError, InsufficientAccessError
+
+logger = logging.getLogger('vibinus')
 
 
 class VibinusServer:
@@ -17,7 +21,7 @@ class VibinusServer:
             username = ''
         else:
             username = self.game.usernames[user_id]
-        print(f"{message} to {username} connected from {addr!r}")
+        logger.debug(f"{message} to {username} connected from {addr!r}")
         await writer.wait_closed()
 
     async def client_authentication(self,reader,writer):
@@ -47,35 +51,55 @@ class VibinusServer:
     async def game_server(self,reader, writer):
         user_id = await self.client_authentication(reader, writer)
         addr = writer.get_extra_info('peername')
-        print(f"{self.game.usernames[user_id]} logged on from {addr!r}")
+        username = self.game.usernames[user_id]
+        logger.debug(f" {username} logged on from {addr!r}")
+        n_blanks = 0
 
         while True:
             data = await reader.read(100)
             command = data.decode()
             if command == 'quit':
+                logger.debug(f"Received: {command} from {username}")
                 await self.close_connection(writer, 'closing connection', user_id)
                 break
+            elif command == "":
+                if n_blanks >= 10:
+                    await self.close_connection(writer, 'closing connection', user_id)
+                    break
+                n_blanks += 1
+                writer.write("".encode())
+                await writer.drain()
+                continue
             else:
+                logger.debug(f"Received: {command} from {username}")
+                n_blanks = 0
                 try:
                     args = command.split(" ")
                     message = self.game.parse_command(user_id, args)
+                except NotImplementedError as e:
+                    message = f"Command not recognized: {e}"
+                except (InsufficientAccessError, RequirementsNotMetError, AssertionError) as e:
+                    message = f"Command failed: {e}"
                 except Exception as e:
-                    message = f"command failed. {e}"
-
-                addr = writer.get_extra_info('peername')
-                print(f"Received {message!r} from {addr!r}")
-
+                    message = f"Something went wrong. {e}"
+                logger.debug(f"Returning: {message!r} to {username}")
                 writer.write(message.encode())
                 await writer.drain()
+        # return await asyncio.gather(return_exceptions=True)
+            # print("Bastard closed the connection in a not nice way!")
+            # await self.close_connection(writer, 'closing connection', user_id)
 
     async def main(self):
         server = await asyncio.start_server(self.game_server, '127.0.0.1', 8888)
 
         addrs = ', '.join(str(sock.getsockname()) for sock in server.sockets)
-        print(f'Serving on {addrs}')
+        logger.info(f'Serving on {addrs}')
 
         async with server:
-            await server.serve_forever()
+            try:
+                await server.serve_forever()
+            except:
+                print("you are here")
 
 
 def run_server_async(server):

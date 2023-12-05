@@ -1,27 +1,46 @@
+import logging
 from ast import literal_eval
 
 import networkx as nx
 import numpy as np
 from matplotlib import pyplot as plt
 
+from src.utils import RequirementsNotMetError
+
+logger = logging.getLogger('vibinus')
 
 class Armies:
-    def __init__(self,teams,sectors,color_dict):
+    def __init__(self, teams, sectors, color_dict, credit_cost_dict):
         n = 0
         for i, team in enumerate(teams):
             if len(team) > 1:
                 for j,_ in enumerate(team[1]):
                     n += 1
+        self.truce_time = 900
+        self.costs = credit_cost_dict
         self.n_teams = len(teams)
         self.sectors = sectors
         self.team_names = []
+        self.vp = np.zeros(self.n_teams)
         self.names = []
         self.paths = []
-        self.str = np.ones(n)
-        self.low_supplies = np.zeros(n,dtype=bool)
         self.army_team_id = -1 * np.ones(n,dtype=int)
+        self.visible = np.zeros(n,dtype=bool)
+
+
+        self.battle_points = np.ones(n)
         self.credits = np.zeros(n,dtype=float)
         self.relics = [[] for _ in range(n)]
+        self._speed_base = 10 * np.ones(n) # If you want some armies to move faster than others change this
+        self._speed_multiplier = np.ones(n)
+        self._speed_multiplier_timeleft = np.zeros(n)
+        self.moving = np.zeros(n,dtype=bool)
+        self.capturing = np.zeros(n,dtype=bool)
+        self.fighting = np.zeros(n,dtype=bool)
+        self.rearming = np.zeros(n, dtype=bool)
+        self._rearm_target = np.zeros(n, dtype=float)
+        self.progress = np.zeros(n)
+
 
         c = 0
         for i, team in enumerate(teams):
@@ -30,24 +49,25 @@ class Armies:
                 for army in team[1]:
                     self.names.append(army[0].lower())
                     self.paths.append([self.sectors.name_id(army[1].lower())])
-                    self.str[c] = army[2]
+                    self.battle_points[c] = army[2]
+                    self.credits[c] = army[3]
                     self.army_team_id[c] = i
+                    if len(army) == 5:
+                        self.visible[c] = army[4]
+                    else:
+                        self.visible[c] = True
                     c += 1
         self._sources = -1 * np.ones(n,dtype=int)
         self._edges = -1 * np.ones(n,dtype=int)
         self.team_allies = -1 * np.ones(self.n_teams,dtype=int)
+        self.team_truce = -1 * np.ones(self.n_teams,dtype=int)
         self.army_allies = -1 * np.ones(n, dtype=int)
+        self.army_truce = -1 * np.ones(n, dtype=int)
+        self.truce_timer = np.zeros(self.n_teams,dtype=float)
         self._desired_allies = -1 * np.ones(self.n_teams,dtype=int)
         self._ids = np.arange(n)
         self._team_ids = np.arange(self.n_teams)
-        self.speeds = 10*np.ones(n) # If you want some armies to move faster than others change this
-        self.capture_speeds = 0.1 * np.ones(n)
-        # self.paths = [[location.lower()] for location in locations]# the full path starting from where we are to where we are going, if we are not moving then it only has our current location
-        self.moving = np.zeros(n,dtype=bool)
-        self.capturing = np.zeros(n,dtype=bool)
-        self.fighting = np.zeros(n,dtype=bool)
-        self.rearming = np.zeros(n, dtype=bool)
-        self.progress = np.zeros(n)
+
         self._command_queue = [[] for _ in range(n)]
 
         self._id_dict = dict(zip(self.names,self._ids))
@@ -62,9 +82,21 @@ class Armies:
         self.auto_takeover_sectors = np.ones(n,dtype=bool)
         self.draw_initial()
 
+    def speed(self,army_id):
+        s = self._speed_base[army_id] * self._speed_multiplier[army_id]
+        return s
+
+
+
     def status_army(self,army_id):
         bonus_msg = ''
         progress_msg = f' Action is {self.progress[army_id]*100:2.2f}% done.'
+        credit_msg = f" Credits available: {self.credits[army_id]}"
+        m_sectors_owned = self.sectors.army_owner == army_id
+        sector_msg = f"Sectors owned: "
+        for sector_id in self.sectors.ids[m_sectors_owned]:
+            sector_msg += f"{self.sectors.names[sector_id]}, which gives the following bonus: \n"
+            sector_msg += f"{self.sectors.sector_bonus[sector_id]} \n"
         if self.moving[army_id]:
             action = 'moving'
             bonus_msg = f" from sector {self.paths_name[army_id][0]} to {self.paths_name[army_id][1]}."
@@ -77,28 +109,53 @@ class Armies:
         else:
             action = 'idle'
             progress_msg = ''
-        status = f"{self.names[army_id]} is currently {action}{bonus_msg}.{progress_msg}"
+        status = f"{self.names[army_id]} is currently {action}{bonus_msg}.{progress_msg}{credit_msg} \n {sector_msg}"
         return status
 
     def status_team(self,team_id):
-        status = (f"{self.team_names[team_id]} currently control {len(sectors)}, which generate {x} credits and {y} victory points pr minute."
-                  f"The team currently has {xx} credits and {yy} victory points.")
+        # m_armies = self.army_team_id == team_id
+        # army_ids = self._ids[m_armies]
+        # sectors_owned = self.sectors
+        # status = (f"{self.team_names[team_id]} currently control {len(sectors)}, which generate {x} credits and {y} victory points pr minute."
+        status = f"The team currently has {self.vp[team_id]} victory points."
         return status
 
+    def buy_stratagem(self,army_id):
+        assert self.armies.fighting[army_id], f"Buying stratagem failed. Army {self.names[army_id]} is not currently fighting."
+        assert self.credits[army_id] >= self.costs['stratagem']
+        self.credits[army_id] -= self.costs['stratagem']
+        return f"Army {self.names[army_id]} sucessfully bought a stratagem."
+
+    def speedup(self,army_id):
+        assert self.credits[army_id] >= self.costs['speedup']
+        self._speed_multiplier[army_id] = 1.25
+        if self._speed_multiplier_timeleft[army_id] < 0:
+            self._speed_multiplier_timeleft[army_id] = 600
+        else:
+            self._speed_multiplier_timeleft[army_id] += 600
+        self.credits[army_id] -= self.costs['speedup']
+        return
+
+    def award_vp(self,team_id, amount):
+        self.vp[team_id] += amount
+        return
 
 
     def queue_command(self,army_id, fn, args):
         self._command_queue[army_id].append((fn, args))
 
     def transfer_item(self,army_id1,army_id2, item, amount):
+        assert not self.fighting[army_id1], 'Item transfer failed. You cannot trade items when fighting.'
         if item == 'credit':
             assert amount > 0, "You cannot transfer negative amount of credits"
             assert self.credits[army_id1] >= amount, f"{self.names[army_id1]} has insufficient credits. Tried to transfer {amount} credits, but had {self.credits[army_id1]} credits available."
             self.credits[army_id1] -= amount
             self.credits[army_id2] += amount
         else:
+            assert self.credits[army_id1] >= self.costs['send_item']
             self.relics[army_id1].remove(item)
             self.relics[army_id2].append(item)
+            self.credits[army_id1] -= self.costs['send_item']
         return
 
     def swap_armies(self,army_id1, army_id2):
@@ -107,12 +164,25 @@ class Armies:
         self.positions[army_id1], self.positions[army_id2] = self.positions[army_id2], self.positions[army_id1]
         return
 
+    def rearm(self,army_id,desired_amount):
+        assert f"desired battle points {desired_amount} are lower than current battle points {self.battle_points[army_id]}"
+        assert self.idle[army_id], f"Army {self.names[army_id]} is not currently idle."
+        sector_id = self.paths[army_id][0]
+        sector_team_id = self.sectors.team_owner(sector_id)
+        team_id = self.army_team_id[army_id]
+        assert team_id == sector_team_id or self.team_allies[team_id] == sector_team_id, f"Army {self.names[army_id]} is not in a friendly sector."
+        self.rearming[army_id] = True
+        self._rearm_target[army_id] = desired_amount
+        status = f"Rearming {self.names[army_id]} from {self.battle_points[army_id]} bp to {desired_amount} bp."
+        return status
+
+
     def get_valid_retreats(self,army_id):
         assert self.fighting[army_id], f'Failed to get retreat sectors. Army {self.names[army_id]} is not currently fighting.'
         team_id = self.army_team_id[army_id]
 
         m_nn = list(self.sectors.G.neighbors(self.sources[army_id]))
-        m_friendly_sector = self.sectors.owners == team_id | self.sectors.owners == self.team_allies[team_id]
+        m_friendly_sector = self.sectors.army_owner == team_id | self.sectors.army_owner == self.team_allies[team_id]
 
         m = m_nn * m_friendly_sector
         valid_sector_ids = self.sectors.ids[m]
@@ -160,15 +230,44 @@ class Armies:
 
     def set_ally(self, team_id, ally_team_id):
         m_team = self.army_team_id == team_id
-
-        # ally_id = self.army_team_id[ally_army_id]
         self._desired_allies[team_id] = ally_team_id
+        old_ally_team_id = self.team_allies[team_id]
+
+        if old_ally_team_id != -1: #Check if the old ally also wants to break the alliance
+            old_ally_wish_to_break_alliance = self._desired_allies[old_ally_team_id] != team_id
+        else:
+            old_ally_wish_to_break_alliance = False
+        if old_ally_wish_to_break_alliance:
+            m_old_ally = self.army_team_id == old_ally_team_id
+            self.team_allies[team_id] = -1
+            self.team_allies[old_ally_team_id] = -1
+            self.army_allies[m_team] = -1
+            self.army_allies[m_old_ally] = -1
+            self.team_truce[team_id] = old_ally_team_id
+            self.team_truce[old_ally_team_id] = team_id
+            self.army_truce[m_team] = old_ally_team_id
+            self.army_truce[m_old_ally] = team_id
+            self.truce_timer[team_id] = self.truce_time
+            self.truce_timer[old_ally_team_id] = self.truce_time
+            logger.info(f"Alliance between {self.team_names[team_id]} and {self.team_names[old_ally_team_id]} has ended by mutual agreement. A truce will be in place for {self.truce_time} in-game seconds.")
+
         if self._desired_allies[ally_team_id] == team_id: #Does the others also wish to be allies with you?
             m_ally = self.army_team_id == ally_team_id
             self.team_allies[team_id] = ally_team_id
             self.team_allies[ally_team_id] = team_id
             self.army_allies[m_ally] = team_id
             self.army_allies[m_team] = ally_team_id
+            logger.info(f"Alliance between {self.team_names[team_id]} and {self.team_names[ally_team_id]} has been made.")
+        return
+
+    def break_alliance(self,team_id):
+        ally_team_id = self.team_allies[team_id]
+        assert ally_team_id != -1, f"Break alliance failed. Team {self.team_names[team_id]} has no allies."
+        self._desired_allies[team_id] = -1
+        self._desired_allies[ally_team_id] = -1
+        self.team_allies[team_id] = -1
+        self.team_allies[ally_team_id] = -1
+        logger.info(f"Alliance between {self.team_names[team_id]} and {self.team_names[ally_team_id]} has been broken by {self.team_names[team_id]}.")
 
     @property
     def idle(self):
@@ -260,7 +359,8 @@ class Armies:
     def get_hostiles(self,idx):
         m_faction = self.army_team_id == self.army_team_id[idx]
         m_allies = self.army_team_id == self.army_allies[idx]
-        m_hostiles = ~ (m_faction + m_allies)
+        m_truce = self.army_team_id == self.army_truce[idx]
+        m_hostiles = ~ (m_faction + m_allies + m_truce)
         return m_hostiles
 
 
@@ -283,9 +383,9 @@ class Armies:
 
 
     def get_max_allowed_armies_in_sector(self,sector_id):
-        owner = self.sectors.owners[sector_id:sector_id+1]
+        owner = self.sectors.army_owner[sector_id:sector_id + 1]
         nn = list(self.sectors.G.neighbors(sector_id))
-        nn_owners = self.sectors.owners[nn]
+        nn_owners = self.sectors.army_owner[nn]
         all_owners = np.hstack((owner,nn_owners))
         unique, counts = np.unique(all_owners,return_counts=True)
         # n = max(self.sectors.owners)
@@ -325,7 +425,7 @@ class Armies:
         m = edges == edge_rev
         if np.sum(m) > 0:
             owners = set(self.army_team_id[m])
-            allowed_owner_ids = set(self.army_team_id[[id]]).union(self.army_allies[[id]])
+            allowed_owner_ids = set(self.army_team_id[[id]]).union(self.army_allies[[id]]).union(self.army_truce[[id]])
             forbidden_ids = owners.difference(allowed_owner_ids)
             if len(forbidden_ids) > 0:
                 raise ValueError(f"Move not allowed due to hostile army moving in opposite direction.")
@@ -398,24 +498,25 @@ class Armies:
             self.paths[army_id] = path_with_origin
             self.moving[army_id] = True
         return
-    def takeover_sector(self,name):
-        id = self.name_id(name.lower())
-        location_id = self.paths[id][0]
-        army_owner = self.army_team_id[id]
-        sector_owner = self.sectors.owners[location_id]
+    def takeover_sector(self,army_id):
+        location_id = self.paths[army_id][0]
+        army_owner = self.army_team_id[army_id]
+        sector_owner = self.sectors.army_owner[location_id]
         m_armies_in_area = self.sources == location_id
-        m_faction = self.army_team_id == self.army_team_id[id]
-        m_allies = self.army_team_id == self.army_allies[id]
+        m_faction = self.army_team_id == self.army_team_id[army_id]
+        m_allies = self.army_team_id == self.army_allies[army_id]
         m_hostiles = ~ (m_faction + m_allies)
         m_hostiles_in_area = m_hostiles * m_armies_in_area
-        if sector_owner == army_owner or sector_owner == self.army_allies[id]: #is the sector owned by a hostile?
-            raise "Sector is already owned by team or allies."
+        if sector_owner == army_owner or sector_owner == self.army_allies[army_id]: #is the sector owned by a hostile?
+            raise RequirementsNotMetError("Sector is already owned by team or allies.")
+        elif sector_owner == self.team_truce[army_owner]:
+            raise RequirementsNotMetError("Sector is owned by former ally, who you have truce with")
         elif self.sectors.being_captured[location_id]:
-            raise "Sector is currently getting captured."
+            raise RequirementsNotMetError("Sector is currently getting captured.")
         elif np.sum(m_hostiles_in_area): # There are other armies in the area
-            raise "Hostiles in sector."
+            raise RequirementsNotMetError("Hostiles in sector.")
         else:
-            self.capturing[id] = True
+            self.capturing[army_id] = True
             self.sectors.being_captured[location_id] = True
         return
 
@@ -423,21 +524,26 @@ class Armies:
 
 
 
-    def time_step(self,dt=0.01):
+    def time_step(self,dt):
+        for i in range(self.n_teams):
+            if self.truce_timer[i] > 0:
+                self.truce_timer[i] -= dt
+                if self.truce_timer[i] <= 0:
+                    self.team_truce[i] = -1
         for i in range(len(self)):
             if self.moving[i]: #Is the army moving?
                 dest = self.paths[i][1]
-                dest_owner = self.sectors.owners[dest]
+                dest_owner = self.sectors.army_owner[dest]
                 if dest_owner == self.army_team_id[i] or dest_owner == self.army_allies[i]:
-                    speed = self.speeds[i]
+                    speed = self.speed(i)
                 else:
-                    speed = self.speeds[i] * 0.75  # lower speed due to moving into hostile sector
+                    speed = self.speed(i) * 0.75  # lower speed due to moving into hostile sector
                 self.progress[i] += dt * speed / self.distances[i]
                 if self.progress[i] >= 1:
                     self.progress[i] = 0
                     self.paths[i].pop(0)
                     loc = self.paths[i][0]
-                    print(f"{self.names[i]} has arrived at {self.paths_name[i][0]}")
+                    logger.info(f"{self.names[i]} has arrived at {self.paths_name[i][0]}")
                     # Check for battle
                     m_armies_in_area = self.sources == loc
                     m_hostiles = self.get_hostiles(i)
@@ -445,14 +551,16 @@ class Armies:
                     battle_in_area = np.sum(m_battle)
                     if battle_in_area:
                         if self.sectors.battle[loc]:
-                            print(f'{self.names[i]} has joined the battle in {self.paths_name[i][0]}')
+                            logger.info(f'{self.names[i]} has joined the battle in {self.paths_name[i][0]}')
                         else:
-                            print(f"A battle has started in {self.paths_name[i][0]}")
+                            logger.info(f"A battle has started in {self.paths_name[i][0]}")
                             self.sectors.battle[loc] = True
                             self.fighting[i] = True
                             self.fighting[m_battle] = True
-
-
+                            self.rearming[m_battle] = False
+                            self.progress[m_battle] = 0
+                            self.capturing[m_battle] = False
+                            self.sectors.being_captured[loc] = False
                     if len(self.paths[i]) > 1:
                         legal_move = self.check_legal_move(i,self.paths[i])
                         if not legal_move:
@@ -462,13 +570,13 @@ class Armies:
                         self.moving[i] = False
             elif self.capturing[i]: # Continue capturing
                 loc = self.paths[i][0]
-                self.progress[i] += dt * self.capture_speeds[i] / self.sectors.str[loc]
+                self.progress[i] += dt * self.speed(i) / self.sectors.battle_points[loc]
                 if self.progress[i] >= 1:
                     self.progress[i] = 0
-                    self.sectors.owners[loc] = self.army_team_id[i]
+                    self.sectors.army_owner[loc] = self.army_team_id[i]
                     self.sectors.being_captured[i] = False
                     self.capturing[i] = False
-                    print(f"{self.names[i]} has captured {self.paths_name[i][0]}")
+                    logger.info(f"{self.names[i]} has captured {self.paths_name[i][0]}")
                     # We check whether any army in the sector or neighbouring sectors are under-supplied because of this
                     loc_nn = list(self.sectors.G.neighbors(loc))
                     for l in [loc]+loc_nn:
@@ -476,25 +584,32 @@ class Armies:
                         for team_id in range(self.n_teams):
                             alliance_armies_in_sector = self.get_team_armies_in_sector(l,team_id)
                             if alliance_armies_in_sector > team_max_armies[team_id]:
-                                print(f"Armies undersupplied. Team: {self.team_names[team_id]} or its allies looses troops.")
-
-
+                                logger.info(f"Armies undersupplied. Team: {self.team_names[team_id]} or its allies looses troops.")
 
             elif self.rearming[i]:
-                pass
+                self.battle_points[i] += dt * self.speed(i)
+                if self.battle_points[i] >= self._rearm_target[i]:
+                    self.battle_points[i] = self._rearm_target[i]
+                    self.rearming[i] = False
+
             elif self.idle[i]:
                 # Do we have any commands in the queue to execute?
                 if self._command_queue[i]:
                     command_fn, args = self._command_queue[i].pop(0)
-                    print("executing queued command")
+                    logger.debug(f"Army {self.names[i]} is executing queued command: {command_fn}, {args}")
                     try:
                         command_fn(*args)
                     except Exception as e:
-                        print(f"queued action failed. {e}")
+                        logger.debug(f"Queued action failed. {e}")
+            if self._speed_multiplier_timeleft[i] > 0:
+                self._speed_multiplier_timeleft[i] -= dt
+                if self._speed_multiplier_timeleft[i] <= 0:
+                    self._speed_multiplier[i] = 1
+
 
     def draw_initial(self):
         for i in range(len(self)):
-            if len(self.paths[i]) > 1:
+            if len(self.paths[i]) > 1 and self.visible[i]:
                 s = self.paths[i][0]
                 d = self.paths[i][1]
                 pos_source = self.sectors.pos[s]
@@ -507,12 +622,10 @@ class Armies:
             self._army_boxes.append(dict(boxstyle="circle", fc="gray", ec=self.color_ids[army_id], lw=2, alpha=0.5))
             self._army_texts.append(plt.text(*xy, str(army_id), ha="center", va="center",size=10, bbox=self._army_boxes[-1]))
 
-        # nx.draw_networkx_nodes(self.G, self.pos, node_color=self.colors, edgecolors='black')
-        # nx.draw_networkx_labels(self.G, self.pos, font_size=10, font_family="sans-serif")
 
     def draw(self):
         for i in range(len(self)):
-            if len(self.paths[i]) > 1:
+            if len(self.paths[i]) > 1 and self.visible[i]:
                 s = self.paths[i][0]
                 d = self.paths[i][1]
                 pos_source = self.sectors.pos[s]
@@ -520,8 +633,9 @@ class Armies:
                 self.positions[i] = (pos_dest - pos_source) * self.progress[i] + pos_source
         pos = self.pos
         for army_id, xy in enumerate(self.positions):
-            tt = self._army_texts[army_id]
-            tt.set_x(xy[0])
-            tt.set_y(xy[1])
-        nx.draw_networkx_nodes(self.G, self.pos, node_color=self.colors, edgecolors='black')
-        nx.draw_networkx_labels(self.G, self.pos, font_size=10, font_family="sans-serif")
+            if self.visible[army_id]:
+                tt = self._army_texts[army_id]
+                tt.set_x(xy[0])
+                tt.set_y(xy[1])
+        # nx.draw_networkx_nodes(self.G, self.pos, node_color=self.colors, edgecolors='black')
+        # nx.draw_networkx_labels(self.G, self.pos, font_size=10, font_family="sans-serif")

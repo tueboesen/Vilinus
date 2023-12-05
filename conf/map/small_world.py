@@ -1,12 +1,13 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-zones = [('Europe', 0, 1.0, (7.5,6),[(6,5),(9,5),(9,8),(6.7,8.5)]),
-           ('Africa', 0, 1.0, (5.5,4),[]),
-           ("Australia", 1, 1.0, (8.1,2.8),[]),
-           ("S_America", 2, 1.0,(3,3),[]),
-           ("N_America", 2, 1.0, (2,6),[]),
-           ("North", 3, 1.0, (4,8),[])
+zones = [('Death', 3, 1.0, (5,0.5), [], ""),
+           ('Europe', 0, 1.0, (7.5,6),[(6,5),(9,5),(9,8),(6.7,8.5)], ""),
+           ('Africa', 0, 1.0, (5.5,4),[],"This gives the owner the following: sdfg.dfs"),
+           ("Australia", 2, 1.0, (8.1,2.8),[], "Nothing for you!"),
+           ("S_America", 1, 1.0,(3,3),[], ""),
+           ("N_America", 1, 1.0, (2,6),[], ""),
+           ("North", 1, 1.0, (4,8),[], "")
 ]
 
 roads = [('Europe', 'Africa',15,(5.7,4.8)),
@@ -18,10 +19,10 @@ roads = [('Europe', 'Africa',15,(5.7,4.8)),
 ('N_America', 'North',10,(2.8,7.0)),
          ]
 
-teams = [['Good', [('Gandalf', 'Europe', 1.0)]]]
-teams += [['Evil', [('Grond', 'North', 1.0)]]]
-teams += [['Others']]
-teams += [["Neutral"]]
+teams = [['Good', [('Gandalf', 'Europe', 1.0, 100.0)]]]
+teams += [['Evil', [('Grond', 'North', 1.0, 500.0)]]]
+teams += [['Others', [('Animals', 'Australia', 1.0, 0.0)]]]
+teams += [["Neutral", [('God', 'Death', 1.0, 999999.0, False)]]]
 
 
 if __name__ == '__main__':

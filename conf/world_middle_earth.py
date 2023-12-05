@@ -2,7 +2,7 @@
 Here we define the world the game takes place in.
 
 zones are defined in a list, where each element is a tuple designating a zone. A zone tuple contains:
-('name of zone', team_id, value, (x_coord of capital, y_coord of capita), [boundary polygon of zone])
+('name of zone', army_id, value, (x_coord of capital, y_coord of capita), [boundary polygon of zone], "Owner of sector effect")
 
 The boundary polygon gives the edges of the polygon of the zone and should be a list of (x,y) coordinates.
 
@@ -12,13 +12,13 @@ roads are unidirectional, meaning that travel is possible in both directions.
 
 """
 
-zones = [('Death', 3, 0.0, (), []),
-         ('Mordor', 0, 1.0, (), []),
-         ('Gondor', 1, 1.0,(),[]),
-         ('Shire', 0, 1.0,(),[]),
-         ('Rohan', 1, 1.0, (), []),
-         ('Rivendell', 2, 1.0, (), []),
-         ('Tirith', 2, 1.0, (),[]),
+zones = [('Death', 3,  0.0, (), [], ""),
+         ('Mordor', 0, 1.0, (), [], ""),
+         ('Gondor', 1, 1.0,(),[], ""),
+         ('Shire', 0, 1.0,(),[], ""),
+         ('Rohan', 1, 1.0, (), [], ""),
+         ('Rivendell', 2, 1.0, (), [], ""),
+         ('Tirith', 2, 1.0, (),[], ""),
         ]
 
 roads = [('Mordor', 'Gondor', 0.6,()),
@@ -46,3 +46,4 @@ teams = [['Good', [('Gandalf', 'Rivendell', 1.0)]]]
 teams += [['Evil', [('Grond', 'Mordor', 1.0), ('Orcs', 'Tirith', 1.0)]]]
 teams += [['Others', [('Hobbits', 'Shire', 1.0)]]]
 teams += [["Neutral"]]
+# teams += [["God", [('Admin', 'Death', )]]]
