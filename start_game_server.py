@@ -34,9 +34,8 @@ if __name__ == '__main__':
     armies.set_ally(3,0)
 
     armies.move_army('gandalf',2)
-    dt = 0.1
     file_checkpoint = 'data/vibinus_gamestate.pkl'
-    game = Vibinus(sectors=sectors,armies=armies,auth_dict=auth_dict,dt=dt,file=file_checkpoint)
+    game = Vibinus(sectors=sectors,armies=armies,auth_dict=auth_dict,file=file_checkpoint)
 
     # game = game.load(file_checkpoint) # Uncomment this if you want to start from the previous saved state
     server = VibinusServer(game)

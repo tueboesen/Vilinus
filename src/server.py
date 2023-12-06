@@ -75,7 +75,7 @@ class VibinusServer:
                 n_blanks = 0
                 try:
                     args = command.split(" ")
-                    message = self.game.parse_command(user_id, args)
+                    message = self.game.command_selector(user_id, args)
                 except NotImplementedError as e:
                     message = f"Command not recognized: {e}"
                 except (InsufficientAccessError, RequirementsNotMetError, AssertionError) as e:

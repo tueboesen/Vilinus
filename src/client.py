@@ -36,14 +36,16 @@ async def vibinus_game_client(hostname, port, username,password):
 
     while True:
         line = await aioconsole.ainput('Enter command:')
+        if line == '':
+            continue
 
-        print(f'Send: {line!r}')
+        print(f'Sent: {line!r} \n')
         writer.write(line.encode())
         await writer.drain()
 
-        data_b = await reader.read(100)
+        data_b = await reader.read(1000)
         data = data_b.decode()
-        print(f'Received: {data!r}')
+        print(f'{data}')
         if data == 'closing connection':
             print('Disconnecting from server...')
             writer.close()
@@ -52,8 +54,8 @@ async def vibinus_game_client(hostname, port, username,password):
 
 
 if __name__ == '__main__':
-    username = 'private'
-    password = '123'
+    username = 'admin'
+    password = 'hemmeligt'
     hostname = '127.0.0.1'
     port = '8888'
     asyncio.run(vibinus_game_client(hostname,port,username,password))
