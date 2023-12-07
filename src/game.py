@@ -13,7 +13,7 @@ from src.utils import InsufficientAccessError, RequirementsNotMetError
 logger = logging.getLogger('vibinus')
 
 class Vibinus:
-    def __init__(self,armies, sectors, auth_dict, file, draw=True):
+    def __init__(self,armies, sectors, auth_dict, file, draw=False):
         self._time0 = None
         self._time0 = None
         self.draw = draw
@@ -44,7 +44,7 @@ class Vibinus:
             self.army_id[i] = info[3]
         self.ids = np.arange(n)
         self._id_dict = dict(zip(self.usernames,self.ids))
-        self.non_queueable_commands = ['help', 'list', 'pause', 'start','status', 'award_vp', 'ally', 'break_alliance', 'buy_stratagem', 'cancel', 'end_game','swap', 'retreat', 'speedup']
+        self.non_queueable_commands = ['help', 'list', 'pause', 'start','status', 'award_vp', 'ally', 'break_alliance', 'buy_stratagem', 'cancel', 'end_game','swap', 'retreat', 'speedup', 'respawn']
         self.queueable_commands = ['move', 'capture', 'rearm', 'give']
 
     def save(self):
@@ -120,12 +120,12 @@ class Vibinus:
         if len(args) == 0:
             fn = self.parse_help
         else:
-            fn = getattr(self, f"parse_{args[0]}")
-        try:
-            msg = fn.__doc__
-        except:
-            msg = f'{args[0]} command not recognized.'
-        if len(args) >0 and args[0] == 'queue':
+            try:
+                fn = getattr(self, f"parse_{args[0]}")
+                msg = fn.__doc__
+            except:
+                msg = f"{args[0]} command not recognized. see 'list' for available commands"
+        if len(args) > 0 and args[0] == 'queue':
             msg += f'The following commands are queueable: \n \t \t \t {", ".join(self.queueable_commands)}'
         return msg
 
@@ -304,6 +304,32 @@ class Vibinus:
             raise InsufficientAccessError("Nop")
         command_fn = self.armies.swap_armies
         command_args = (army_1_id, army_2_id)
+        status = command_fn(*command_args)
+        return status
+
+    def parse_respawn(self, user_id, args):
+        """
+        Respawns in a random team area. This command can only be used if you are dead.
+        The respawn location can be specified, but this costs x credits.
+
+        'respawn' - respawns in a random team territory
+        'respawn sector_name_or_id' respawns in the specified team territory
+
+        """
+        access_level = self.access_level[user_id]
+        if access_level in [0, 1]:
+            assert len(args) >= 1, f"command expected at least 1 argument, {len(args)} were given."
+            army_1_name, army_1_id = self._get_name_and_id(args.pop(0), 'army')
+            if access_level in [1]:
+                assert self.armies.army_team_id[army_1_id] == self.team[user_id]
+        else:
+            army_1_id = self.army_id[user_id]
+        if len(args) > 0:
+            sector_name, sector_id = self._get_name_and_id(args.pop(0), 'sector')
+        else:
+            sector_id = None
+        command_fn = self.armies.respawn
+        command_args = (army_1_id, sector_id)
         status = command_fn(*command_args)
         return status
 

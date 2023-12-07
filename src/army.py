@@ -1,17 +1,19 @@
 import logging
+import random
 from ast import literal_eval
 
 import networkx as nx
 import numpy as np
 from matplotlib import pyplot as plt
 
+from conf.settings import ARMY_SIZE
 from src.utils import RequirementsNotMetError
 
 logger = logging.getLogger('vibinus')
 
 
 class Armies:
-    def __init__(self, teams, sectors, color_dict, credit_cost_dict):
+    def __init__(self, teams, sectors, color_dict, credit_cost_dict, army_size=ARMY_SIZE):
         self._army_boxes = []
         self._army_texts = []
         n = 0
@@ -40,6 +42,8 @@ class Armies:
         self.capturing = np.zeros(n, dtype=bool)
         self.fighting = np.zeros(n, dtype=bool)
         self.rearming = np.zeros(n, dtype=bool)
+        self.respawning = np.zeros(n, dtype=bool)
+        self.dead = np.zeros(n, dtype=bool)
         self._rearm_target = np.zeros(n, dtype=float)
         self.progress = np.zeros(n)
 
@@ -81,6 +85,8 @@ class Armies:
         self.color_ids = color_dict
         self.modes = ['passive'] * n
         self.auto_takeover_sectors = np.ones(n, dtype=bool)
+        self.army_size = army_size
+        self.respawn_len = 100 # Time it takes to respawn
         self.draw_initial()
 
     def speed(self, army_id):
@@ -105,6 +111,8 @@ class Armies:
             action = 'fighting'
         elif self.rearming[army_id]:
             action = 'rearming'
+        elif self.respawning[army_id]:
+            action = 'respawning'
         else:
             action = 'idle'
             progress_msg = ''
@@ -324,7 +332,7 @@ class Armies:
 
     @property
     def idle(self):
-        not_idle = self.moving | self.capturing | self.fighting | self.rearming
+        not_idle = self.moving | self.capturing | self.fighting | self.rearming | self.respawning | self.dead
         return ~not_idle
 
     @property
@@ -443,6 +451,23 @@ class Armies:
         armies_allowed[self.team_allies[unique[m]]] += counts[m]
         return armies_allowed
 
+    def respawn(self,army_id, sector_id):
+        team_id = self.army_team_id[army_id]
+        m_team_sectors = self.sectors.team_owner == team_id
+        team_sector_ids = self.sectors.ids[m_team_sectors]
+        assert self.respawning[army_id] == False, 'Army is already respawning'
+
+        if sector_id is None:
+            sector_id = random.choice(team_sector_ids)
+        else:
+            assert sector_id in team_sector_ids, "Cannot respawn in sector that does not belong to your team."
+            assert self.credits[army_id] >= self.costs['respawn_in_location']
+            self.credits[army_id] -= self.costs['respawn_in_location']
+        self.respawning[army_id] = True
+        self.progress[army_id] = 0
+        self.paths[army_id] = [0, sector_id]
+        return
+
     def get_team_armies_in_sector(self, sector_id, team_id):
         """
         Note that this both calculates the armies in the sector and armies currently moving to the sector.
@@ -551,6 +576,16 @@ class Armies:
             self.moving[army_id] = True
         return
 
+    def check_and_move_multiple_armies_in_same_sector(self,sector_id):
+        m_armies_in_area = self.sources == sector_id
+        if np.sum(m_armies_in_area) > 1:
+            # make sure to reposition all armies in m_armies_in_area
+            n = np.sum(m_armies_in_area)
+            ii = np.arange(n)
+            dxy = np.stack([np.cos(ii * 2 * np.pi / n), np.sin(ii * 2 * np.pi / n)], axis=1)
+            self.positions[m_armies_in_area] += 0.2 * dxy
+
+
     def takeover_sector(self, army_id):
         location_id = self.paths[army_id][0]
         army_owner = self.army_team_id[army_id]
@@ -618,13 +653,20 @@ class Armies:
                             self.moving[i] = False
                     else:
                         self.moving[i] = False
-                    if np.sum(m_armies_in_area) > 1: # There is more than 1 army in this area, we should draw them differently
-                        #make sure to reposition all armies in m_armies_in_area
-                        n = np.sum(m_armies_in_area)
-                        ii = np.arange(n)
-                        dxy = np.stack([np.cos(ii*2*np.pi/n),np.sin(ii*2*np.pi/n)],axis=1)
-                        self.positions[m_armies_in_area] += 0.2*dxy
-                        print('here')
+                    self.check_and_move_multiple_armies_in_same_sector(loc)
+
+            elif self.respawning[i]:
+                self.progress[i] += dt * self.speed(i) / self.respawn_len
+                if self.progress[i] >= 1:
+                    self.progress[i] = 0
+                    self.respawning[i] = False
+                    self.dead[i] = False
+                    self.paths[i].pop(0)
+                    loc = self.paths[i][0]
+                    logger.info(f"{self.names[i]} has respawned in {self.paths_name[i][0]}")
+                    self.positions[i] = self.sectors.pos[loc]
+                    self.check_and_move_multiple_armies_in_same_sector(loc)
+
 
             elif self.capturing[i]:  # Continue capturing
                 loc = self.paths[i][0]
@@ -677,7 +719,7 @@ class Armies:
         for army_id, xy in enumerate(self.positions):
             self._army_boxes.append(dict(boxstyle="circle", fc="gray", ec=self.color_ids[army_id], lw=2, alpha=0.5))
             self._army_texts.append(
-                plt.text(*xy, str(army_id), ha="center", va="center", size=10, bbox=self._army_boxes[-1]))
+                plt.text(*xy, str(army_id), ha="center", va="center", size=self.army_size, bbox=self._army_boxes[-1]))
 
     def draw(self):
         for i in range(len(self)):

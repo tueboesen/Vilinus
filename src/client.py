@@ -33,13 +33,17 @@ async def vibinus_game_client(hostname, port, username,password):
     except Exception as e:
         print(f"{e}")
         return
+    print(f"Successfully logged on to Vibinus server {hostname}:{port} as {username}")
+    print("")
+    print(f"To see a list of available commands type: 'list'.")
+    print(f"To see what command x does type: 'help x'")
 
     while True:
-        line = await aioconsole.ainput('Enter command:')
+        line = await aioconsole.ainput('')
         if line == '':
             continue
 
-        print(f'Sent: {line!r} \n')
+        # print(f'Sent: {line!r} \n')
         writer.write(line.encode())
         await writer.drain()
 

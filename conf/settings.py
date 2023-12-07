@@ -1,4 +1,8 @@
 
+ARMY_SIZE = 10
+ROAD_SIZE = 10
+
+
 COLORS = {0: 'blue',
           1: 'yellow',
           2: 'green',
@@ -11,9 +15,8 @@ COSTS = {
     'speedup': 10,
     # 'fast_move': 10,
     'send_item': 5,
-    'fast_respawn': 20,
+    'respawn_in_location': 20,
     'full_respawn': 30,
-    'friendly_sector_respawn': 20,
     'extra_stratagem': 5
 }
 

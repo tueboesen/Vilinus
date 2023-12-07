@@ -4,11 +4,12 @@ import os.path
 
 from matplotlib import pyplot as plt
 
+from conf.settings import ROAD_SIZE
 from src.army import Armies
 
 
 class Sectors:
-    def __init__(self, sectors, edges, color_dict, image_path=None,death_id=0, armies: Armies = None):
+    def __init__(self, sectors, edges, color_dict, image_path=None,death_id=0, armies: Armies = None, road_size=ROAD_SIZE):
         self.armies = armies
         self.sword_icon = plt.imread('icons/battle.png')
         self.capture_icon = plt.imread('icons/capture.png')
@@ -97,6 +98,7 @@ class Sectors:
         for key,val in self.pos.items():
             pos_shift[key] = val + [0,0.2]
         self.pos_shift = pos_shift
+        self.road_size = road_size
         self.being_captured = np.zeros(n,dtype=bool)
 
     def __len__(self):
@@ -151,7 +153,7 @@ class Sectors:
                 # plt.scatter(*road,zorder=2,c='black',alpha=0.3,s=30)
                 # plt.annotate(str(distance), xy=road)
                 bbox_props = dict(boxstyle="circle", fc="gray", ec="black", lw=2, alpha=0.5)
-                t = plt.text(*road, str(distance), ha="center", va="center",size=10, bbox=bbox_props)
+                t = plt.text(*road, str(distance), ha="center", va="center",size=self.road_size, bbox=bbox_props)
             plt.imshow(self.image, zorder=0, extent=[0.0, 10.0, 0.0, 10.0])
         else:
             nx.draw_networkx_nodes(self.G, self.pos, node_size=3000, node_color=self.node_colors())

@@ -8,4 +8,7 @@ if __name__ == '__main__':
     # hostname = '127.0.0.1'
     hostname = '192.168.165.154'
     port = '8888'
-    asyncio.run(vibinus_game_client(hostname,port,username,password))
+    try:
+        asyncio.run(vibinus_game_client(hostname,port,username,password))
+    except ConnectionRefusedError:
+        print(f"Could not find a Vibinus server on {hostname}:{port}. Please make sure ip and port is correct.")
