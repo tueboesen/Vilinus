@@ -13,16 +13,18 @@ from src.utils import InsufficientAccessError, RequirementsNotMetError
 logger = logging.getLogger('vibinus')
 
 class Vibinus:
-    def __init__(self,armies, sectors, auth_dict, file, draw=True):
+    def __init__(self,armies, sectors, auth_dict, file, draw=False):
         self.draw = draw
         self.filename = file
         self.running = False
+        self.end_game = False
         self.delta = 0.1
         self.autosave_every_n_seconds = 10
         self.t = 0.0
         self._t0 = None
         self._tbonus = 0.0
         self._t_last_save = 0.0
+        self.time_game_end = 999999
         self.armies = armies
         self.sectors = sectors
         self.auth = auth_dict
@@ -40,6 +42,8 @@ class Vibinus:
             self.army_id[i] = info[3]
         self.ids = np.arange(n)
         self._id_dict = dict(zip(self.usernames,self.ids))
+        self.non_queueable_commands = ['help', 'list', 'pause', 'start','status', 'award_vp', 'ally', 'break_alliance', 'buy_stratagem', 'cancel', 'end_game','swap', 'retreat', 'speedup']
+        self.queueable_commands = ['move', 'capture', 'rearm', 'give']
 
     def save(self):
         with open(self.filename, 'wb') as outp:
@@ -119,6 +123,8 @@ class Vibinus:
             msg = fn.__doc__
         except:
             msg = f'{args[0]} command not recognized.'
+        if args[0] == 'queue':
+            msg += f'The following commands are queueable: \n \t {", ".join(self.queueable_commands)}'
         return msg
 
     def parse_list(self, user_id, args):
@@ -268,7 +274,8 @@ class Vibinus:
             raise InsufficientAccessError("Nop")
         command_fn = self.armies.swap_armies
         command_args = (army_1_id, army_2_id)
-        return army_1_id, command_fn, command_args
+        status = command_fn(*command_args)
+        return status
 
     def parse_retreat(self,user_id, args):
         """
@@ -298,7 +305,8 @@ class Vibinus:
                 sector_id = self.sectors.death_id
         command_fn = self.armies.retreat
         command_args = (army_id, sector_id)
-        return army_id, command_fn, command_args
+        status = command_fn(*command_args)
+        return status
 
     def parse_buy_stratagem(self,user_id, args):
         """
@@ -317,6 +325,41 @@ class Vibinus:
         command_args = (army_id)
         status = command_fn(*command_args)
         return status
+
+    def parse_cancel(self, user_id, args):
+        """
+        stops actions that are stoppable, current action and/or queued actions depending on keywords.
+
+        'cancel' = 'cancel all' - stops all actions, both current and planned.
+        'cancel queue' - empties the queue
+        'cancel current' - stops whatever action you are currently doing if cancelable (fighting isn't cancelable for instance)
+
+        Note that a move action currently being fulfilled is not cancelable, since you can't just wait between zones.
+        For move actions you can replace you current move action with another move action.
+
+        For admins/teams the command takes the shape:
+        'cancel army_name_or_id queue'
+        """
+        access_level = self.access_level[user_id]
+        if access_level in [0, 1]:
+            assert len(args) >= 1, f"command expected at least 1 argument, {len(args)} were given."
+            army_name, army_id = self._get_name_and_id(args.pop(0), 'army')
+            if access_level in [1]:
+                assert self.armies.army_team_id[army_id] == self.team[user_id]
+        else:
+            army_id = self.army_id[user_id]
+        if len(args) == 0 or args[0] == 'all':
+            command_args = (army_id,'all')
+        elif args[0] == 'queue':
+            command_args = (army_id,'queue')
+        elif args[0] == 'current':
+            command_args = (army_id,'current')
+        else:
+            raise ValueError(f"cancel keyword: {args[0]},  not recognized. ")
+        command_fn = self.armies.cancel_actions
+        status = command_fn(*command_args)
+        return status
+
 
     def parse_status(self, user_id, args):
         """
@@ -367,7 +410,8 @@ class Vibinus:
             army_id = self.army_id[user_id]
         command_fn = self.armies.speedup
         command_args = (army_id,)
-        return army_id, command_fn, command_args
+        status = command_fn(*command_args)
+        return status
     def parse_award_vp(self,user_id, args):
         """
         Adds x victory points (vp) to a team
@@ -418,10 +462,29 @@ class Vibinus:
         else:
             raise InsufficientAccessError("Nop")
 
+    def parse_end_game(self,user_id, args):
+        """
+        Ends the game, now or at specified time.
+
+        'end_game' - ends the game now
+        'end_game 1000' - ends the game once the clock reaches t=1000
+        """
+        access_level = self.access_level[user_id]
+        if access_level in [0]:  # Admin
+            if len(args) > 0:
+                self.time_game_end = args[0]
+            else:
+                self.running = False
+                self.end_game = True
+                logger.info("Game ended.")
+                return 'Ending game.'
+        else:
+            raise InsufficientAccessError("Nop")
+
 
     def parse_queue(self, user_id, args):
         """
-        Docstring for queue
+        Queues a command, such that it will be executed once the army is next idle.
         """
         pass
 
@@ -433,7 +496,7 @@ class Vibinus:
         command = args.pop(0)
 
         access_level = self.access_level[user_id]
-        if command in ['help', 'list', 'pause', 'start','status', 'award_vp', 'ally', 'break_alliance', 'buy_stratagem']: # Non-queueable commands
+        if command in self.non_queueable_commands: # Non-queueable commands
             if not execute_command:
                 raise RequirementsNotMetError(f"{command} is not queueable.")
             fn = getattr(self,f"parse_{command}")
@@ -442,7 +505,7 @@ class Vibinus:
         elif command == 'queue' or command == 'q': # Queue command
             status = self.command_selector(user_id, args, execute_command=False)
             return status
-        elif command in ['move', 'capture', 'rearm', 'give', 'swap', 'retreat', 'speedup']: # Queueable commands
+        elif command in self.queueable_commands: # Queueable commands
             fn = getattr(self,f"parse_{command}")
             army_id, command_fn, command_args = fn(user_id,args)
         else:
@@ -475,20 +538,14 @@ class Vibinus:
                 if (self.t - self._t_last_save) > self.autosave_every_n_seconds:
                     self.save()
                     self._t_last_save = self.t
-
-
-                #
-                # plt.clf()
-                # sectors.draw()
-                # armies.draw()
-                # ax = plt.gca()
-                # ax.margins(0.08)
-                # plt.axis("off")
-                # plt.tight_layout()
-                # # plt.show()
-                # plt.pause(0.01)
-                # if (round(t, 2) % 1 == 0):
-                #     print(f"{t:2.2f}")
+                if self.t >= self.time_game_end:
+                    self.running = False
+                    self.end_game = True
+                    logger.info("Game ended.")
+            if self.end_game:
+                self.armies.end_game_bonuses()
+                logger.info(self.armies.status_game())
+                break
 
     def draw_game(self):
         # plt.cla()

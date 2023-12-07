@@ -120,6 +120,17 @@ class Armies:
         status = f"The team currently has {self.vp[team_id]} victory points."
         return status
 
+    def status_game(self):
+        vp = self.vp
+        names = self.team_names
+        indices = np.argsort(vp)
+        msg = 'Victory points pr team: \n'
+        for i, idx in enumerate(reversed(indices)):
+            msg += f"{i}) {names[idx]:50}: {vp[idx]:5.2f} \n"
+        return msg
+
+
+
     def buy_stratagem(self,army_id):
         assert self.armies.fighting[army_id], f"Buying stratagem failed. Army {self.names[army_id]} is not currently fighting."
         assert self.credits[army_id] >= self.costs['stratagem']
@@ -140,6 +151,11 @@ class Armies:
         self.vp[team_id] += amount
         return
 
+    def end_game_bonuses(self):
+        """
+        This function should provide any end game bonuses/penalties to teams/players
+        """
+        pass
 
     def queue_command(self,army_id, fn, args):
         self._command_queue[army_id].append((fn, args))
@@ -157,6 +173,32 @@ class Armies:
             self.relics[army_id2].append(item)
             self.credits[army_id1] -= self.costs['send_item']
         return
+
+    def cancel_actions(self,army_id, mode):
+        msg = ''
+        if mode in ['current','all']:
+            if self.capturing[army_id]:
+                self.capturing[army_id] = False
+                self.progress[army_id] = 0
+                loc = self.paths[army_id][0]
+                self.sectors.being_captured[loc] = False
+                msg += f'Capture of {self.sectors.names[loc]} was cancelled.'
+            elif self.rearming[army_id]:
+                self.rearming[army_id] = False
+                msg += f"Rearming was cancelled, current army battle points = {self.battle_points[army_id]:2.0}. "
+        if mode in ['all', 'queue']:
+            q = self._command_queue[army_id]
+            if len(q) == 0:
+                msg += f"queue was already empty."
+            else:
+                msg += f"Removed {len(q)} orders from queue: \n"
+                for i in range(len(q)):
+                    msg += f"{q} \n"
+        if msg == '':
+            msg = 'Nothing to cancel.'
+        return msg
+
+
 
     def swap_armies(self,army_id1, army_id2):
         assert self.idle[army_id1] == self.idle[army_id2] == True, "Both armies need to be idle for a swap to happen."
@@ -521,9 +563,6 @@ class Armies:
         return
 
 
-
-
-
     def time_step(self,dt):
         for i in range(self.n_teams):
             if self.truce_timer[i] > 0:
@@ -574,7 +613,7 @@ class Armies:
                 if self.progress[i] >= 1:
                     self.progress[i] = 0
                     self.sectors.army_owner[loc] = self.army_team_id[i]
-                    self.sectors.being_captured[i] = False
+                    self.sectors.being_captured[loc] = False
                     self.capturing[i] = False
                     logger.info(f"{self.names[i]} has captured {self.paths_name[i][0]}")
                     # We check whether any army in the sector or neighbouring sectors are under-supplied because of this
