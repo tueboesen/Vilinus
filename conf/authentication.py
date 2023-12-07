@@ -13,7 +13,7 @@ access levels go from 0 to 3
 
 For instance:
 auth_dict = {'dummy_username': ("123", 3, 2, 3)}
-is an authetication dictionary with only one user in it.
+is an authentication dictionary with only one user in it.
     the username is 'dummy_username'
     the password is '123'
     the user has access level 3

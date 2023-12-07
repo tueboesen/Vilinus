@@ -56,6 +56,7 @@ async def vibinus_game_client(hostname, port, username,password):
 if __name__ == '__main__':
     username = 'admin'
     password = 'hemmeligt'
-    hostname = '127.0.0.1'
+    # hostname = '127.0.0.1'
+    hostname = '192.168.165.154'
     port = '8888'
     asyncio.run(vibinus_game_client(hostname,port,username,password))

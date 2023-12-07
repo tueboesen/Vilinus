@@ -1,16 +1,21 @@
 import asyncio
 import logging
+import socket
 
 from src.game import Vibinus
 from src.utils import RequirementsNotMetError, InsufficientAccessError
-
 logger = logging.getLogger('vibinus')
 
 
 class VibinusServer:
 
-    def __init__(self,game: Vibinus):
+    def __init__(self,game: Vibinus, ip_address=None, port=8888):
         self.game = game
+        if ip_address is None:
+            self.ip = socket.gethostbyname(socket.gethostname())
+        else:
+            self.ip = ip_address
+        self.port = port
 
     async def close_connection(self,writer,message,user_id=None):
         writer.write(message.encode())
@@ -90,7 +95,7 @@ class VibinusServer:
             # await self.close_connection(writer, 'closing connection', user_id)
 
     async def main(self):
-        server = await asyncio.start_server(self.game_server, '127.0.0.1', 8888)
+        server = await asyncio.start_server(self.game_server, self.ip, self.port)
 
         addrs = ', '.join(str(sock.getsockname()) for sock in server.sockets)
         logger.info(f'Serving on {addrs}')

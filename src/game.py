@@ -13,7 +13,9 @@ from src.utils import InsufficientAccessError, RequirementsNotMetError
 logger = logging.getLogger('vibinus')
 
 class Vibinus:
-    def __init__(self,armies, sectors, auth_dict, file, draw=False):
+    def __init__(self,armies, sectors, auth_dict, file, draw=True):
+        self._time0 = None
+        self._time0 = None
         self.draw = draw
         self.filename = file
         self.running = False
@@ -123,8 +125,8 @@ class Vibinus:
             msg = fn.__doc__
         except:
             msg = f'{args[0]} command not recognized.'
-        if args[0] == 'queue':
-            msg += f'The following commands are queueable: \n \t {", ".join(self.queueable_commands)}'
+        if len(args) >0 and args[0] == 'queue':
+            msg += f'The following commands are queueable: \n \t \t \t {", ".join(self.queueable_commands)}'
         return msg
 
     def parse_list(self, user_id, args):
@@ -222,6 +224,33 @@ class Vibinus:
         command_args = (army_id, amount)
         return army_id, command_fn, command_args
 
+    def parse_make_steward(self, user_id, args):
+        """
+        Makes a teammate the steward of a sector you own
+
+        'make_steward army_name_or_id sector_name_or_id'
+        item can be either 'credit' or the name of a relic
+        amount is only needed for credits
+
+        For admin/team:
+        'make_steward army1 army2 sector_name_or_id'
+        where army1 is the donator, and army2 the receiver
+        """
+        access_level = self.access_level[user_id]
+        if access_level in [0, 1]:
+            assert len(args) >= 3, f"command expected 3 argument, {len(args)} were given."
+            army_1_name, army_1_id = self._get_name_and_id(args.pop(0), 'army')
+            if access_level in [1]:
+                assert self.armies.army_team_id[army_1_id] == self.team[user_id]
+        else:
+            assert len(args) >= 2, f"command expected 2 argument, {len(args)} were given."
+            army_1_id = self.army_id[user_id]
+        army_2_name, army_2_id = self._get_name_and_id(args.pop(0), 'army')
+        sector_name, sector_id = self._get_name_and_id(args.pop(0), 'sector')
+        command_fn = self.armies.make_steward
+        command_args = (army_1_id, army_2_id, sector_id)
+        return army_1_id, command_fn, command_args
+
     def parse_give(self, user_id, args):
         """
         Gives relic or credits to another army
@@ -229,6 +258,7 @@ class Vibinus:
         'give army_name_or_id item amount'
         item can be either 'credit' or the name of a relic
         amount is only needed for credits
+
         """
         access_level = self.access_level[user_id]
         if access_level in [0, 1]:
@@ -491,7 +521,7 @@ class Vibinus:
     def command_selector(self, user_id, args, execute_command=True):
         """
         We evaluate that the command exist and is allowed to be called by the user.
-        Furthermore we evaluate that the command has the required amount of arguments and that those arguments are potentially valid (sector names are spelled correctly ect.)
+        Furthermore, we evaluate that the command has the required amount of arguments and that those arguments are potentially valid (sector names are spelled correctly ect.)
         """
         command = args.pop(0)
 

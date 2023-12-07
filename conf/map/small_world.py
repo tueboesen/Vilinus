@@ -19,7 +19,7 @@ roads = [('Europe', 'Africa',15,(5.7,4.8)),
 ('N_America', 'North',10,(2.8,7.0)),
          ]
 
-teams = [['Good', [('Gandalf', 'Europe', 1.0, 100.0)]]]
+teams = [['Good', [('Gandalf', 'Europe', 1.0, 100.0),("Frodo", 'Africa',1.0, 0.1)]]]
 teams += [['Evil', [('Grond', 'North', 1.0, 500.0)]]]
 teams += [['Others', [('Animals', 'Australia', 1.0, 0.0)]]]
 teams += [["Neutral", [('God', 'Death', 1.0, 999999.0, False)]]]
