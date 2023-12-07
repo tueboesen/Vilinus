@@ -39,7 +39,7 @@ async def vibinus_game_client(hostname, port, username,password):
     print(f"To see what command x does type: 'help x'")
 
     while True:
-        line = await aioconsole.ainput('')
+        line = await aioconsole.ainput(f'')
         if line == '':
             continue
 
