@@ -4,6 +4,9 @@ from time import sleep
 import aioconsole
 
 async def logon(username,password,reader,writer):
+    """
+    Client logon decoder
+    """
 
     writer.write(username.encode())
     await writer.drain()
@@ -27,6 +30,11 @@ async def logon(username,password,reader,writer):
     return
 
 async def vibinus_game_client(hostname, port, username,password):
+    """
+    Async client logon
+
+    Allows a user to issue commands to a game server and get responses back based on the command.
+    """
     reader, writer = await asyncio.open_connection(hostname, port)
     try:
         await logon(username, password, reader, writer)

@@ -13,6 +13,10 @@ logger = logging.getLogger('vibinus')
 
 
 class Armies:
+    """
+    The armies class contains all information about all the armies present in a game.
+
+    """
     def __init__(self, teams, sectors, color_dict, credit_cost_dict, army_size=ARMY_SIZE):
         self._army_boxes = []
         self._army_texts = []
@@ -90,10 +94,16 @@ class Armies:
         self.draw_initial()
 
     def speed(self, army_id):
+        """
+        Computes the speed at which an army completes a task (be that moving or capturing or rearming)
+        """
         s = self._speed_base[army_id] * self._speed_multiplier[army_id]
         return s
 
     def status_army(self, army_id):
+        """
+        Compiles a string message detailing the status of an army. Designed to be returned to a client such that they can gain all relevant information about their army.
+        """
         bonus_msg = ''
         progress_msg = f' Action is {self.progress[army_id] * 100:2.2f}% done.'
         credit_msg = f" Credits available: {self.credits[army_id]}"
@@ -120,6 +130,9 @@ class Armies:
         return status
 
     def status_team(self, team_id):
+        """
+        Compiles a string message detailing the status of a team. Designed to be returned to a client such that they can gain all relevant information about their team.
+        """
         # m_armies = self.army_team_id == team_id
         # army_ids = self._ids[m_armies]
         # sectors_owned = self.sectors
@@ -128,6 +141,10 @@ class Armies:
         return status
 
     def status_game(self):
+        """
+        Compiles information about the game, this is not designed to be called by individual clients since it gives secret information like the VP amount for each team.
+        This is designed to be called at the end of a game by the server itself to broadcast the final scoring.
+        """
         vp = self.vp
         names = self.team_names
         indices = np.argsort(vp)
@@ -137,6 +154,9 @@ class Armies:
         return msg
 
     def buy_stratagem(self, army_id):
+        """
+        Command to buy a stratagem, can only be used by an army currently in combat.
+        """
         assert self.armies.fighting[
             army_id], f"Buying stratagem failed. Army {self.names[army_id]} is not currently fighting."
         assert self.credits[army_id] >= self.costs['stratagem']
@@ -144,6 +164,9 @@ class Armies:
         return f"Army {self.names[army_id]} successfully bought a stratagem."
 
     def speedup(self, army_id):
+        """
+        Speeds up an army for the next 600 seconds. This gives a general speedup to that army when it completes various tasks.
+        """
         assert self.credits[army_id] >= self.costs['speedup']
         self._speed_multiplier[army_id] = 1.25
         if self._speed_multiplier_timeleft[army_id] < 0:
@@ -154,6 +177,9 @@ class Armies:
         return
 
     def award_vp(self, team_id, amount):
+        """
+        Gives x vp to a team (designed for admins only)
+        """
         self.vp[team_id] += amount
         return
 
@@ -164,9 +190,15 @@ class Armies:
         pass
 
     def queue_command(self, army_id, fn, args):
+        """
+        Queues an army command for later execution. queued commands are executed when the army is idle.
+        """
         self._command_queue[army_id].append((fn, args))
 
     def make_steward(self, army_id1, army_id2, sector_id):
+        """
+        Transfers ownership of sector_id from army_id1 to army_id2
+        """
         assert not self.fighting[army_id1], 'Cannot transfer ownership of sector while fighting. '
         assert not self.fighting[army_id2], 'Cannot transfer ownership of sector to someone currently fighting. '
         assert self.army_team_id[army_id1] == self.army_team_id[army_id2], "Ownership of sectors can only be transferred between armies in the same team."
@@ -176,6 +208,10 @@ class Armies:
 
 
     def transfer_item(self, army_id1, army_id2, item, amount):
+        """
+        Transfers item from army_id1, to army_id2
+        if the item being transferred is credits, then amount is relevant.
+        """
         assert not self.fighting[army_id1], 'Item transfer failed. You cannot trade items when fighting.'
         if item == 'credit':
             assert amount > 0, "You cannot transfer negative amount of credits"
@@ -191,6 +227,16 @@ class Armies:
         return
 
     def cancel_actions(self, army_id, mode):
+        """
+        Cancels the actions of an army
+
+        if mode == current
+         then just the current action is cancelled.
+        if mode == all
+         then all actions both current and queued actions are cancelled
+        if mode == queue
+         then only queued actions are removed
+        """
         msg = ''
         if mode in ['current', 'all']:
             if self.capturing[army_id]:
@@ -215,12 +261,18 @@ class Armies:
         return msg
 
     def swap_armies(self, army_id1, army_id2):
+        """
+        Swap the position of army_id1, and army_id2
+        """
         assert self.idle[army_id1] == self.idle[army_id2] == True, "Both armies need to be idle for a swap to happen."
         self.paths[army_id1], self.paths[army_id2] = self.paths[army_id2], self.paths[army_id1]
         self.positions[army_id1], self.positions[army_id2] = self.positions[army_id2], self.positions[army_id1]
         return
 
     def rearm(self, army_id, desired_amount):
+        """
+        Starts the rearming of army_id up to the desired amount of battle points.
+        """
         assert f"desired battle points {desired_amount} are lower than current battle points {self.battle_points[army_id]}"
         assert self.idle[army_id], f"Army {self.names[army_id]} is not currently idle."
         sector_id = self.paths[army_id][0]
@@ -234,6 +286,9 @@ class Armies:
         return status
 
     def get_valid_retreats(self, army_id):
+        """
+        Get the possible retreats available to army_id
+        """
         assert self.fighting[
             army_id], f'Failed to get retreat sectors. Army {self.names[army_id]} is not currently fighting.'
         team_id = self.army_team_id[army_id]
@@ -254,6 +309,9 @@ class Armies:
         return valid_sector_ids
 
     def retreat(self, army_id, sector_id):
+        """
+        Retreats army_id to sector_id
+        """
         assert self.fighting[army_id], f'Failed to retreat army. Army {self.names[army_id]} is not currently fighting.'
 
         if sector_id == self.sectors.death_id:
@@ -272,6 +330,9 @@ class Armies:
         return
 
     def check_for_battle(self, sector_id):
+        """
+        Check whether a battle is currently happening in a sector
+        """
         m_armies_in_area = self.sources == sector_id
         army_factions = self.army_team_id[m_armies_in_area]
         factions = np.unique(army_factions)
@@ -287,6 +348,10 @@ class Armies:
         return battle
 
     def set_ally(self, team_id, ally_team_id):
+        """
+        team_id desires to be an ally with ally_team_id.
+        if ally_team_id already desires to be an ally of team_id then an official alliance is declared.
+        """
         m_team = self.army_team_id == team_id
         self._desired_allies[team_id] = ally_team_id
         old_ally_team_id = self.team_allies[team_id]
@@ -321,6 +386,9 @@ class Armies:
         return
 
     def break_alliance(self, team_id):
+        """
+        Breaks any alliance team_id might have.
+        """
         ally_team_id = self.team_allies[team_id]
         assert ally_team_id != -1, f"Break alliance failed. Team {self.team_names[team_id]} has no allies."
         self._desired_allies[team_id] = -1
@@ -332,20 +400,33 @@ class Armies:
 
     @property
     def idle(self):
+        """
+        Checks which armies are idle
+        """
         not_idle = self.moving | self.capturing | self.fighting | self.rearming | self.respawning | self.dead
         return ~not_idle
 
     @property
     def colors(self):
+        """
+        Gives the colors of all armies
+        """
         colors = [self.color_ids[owner] for owner in self.army_team_id]
         return colors
 
     @property
     def pos(self):
+        """
+        Gives the position (x,y) of all armies. This is the position used for the actual drawing.
+        Position is returned as a dictionary.
+        """
         return dict(zip(self._ids, self.positions))
 
     @property
     def sources(self):
+        """
+        Gives the sources of all armies, which is the location they are currently residing. if an army is moving then the source is =-1
+        """
         for i, path in enumerate(self.paths):
             if self.moving[i]:
                 self._sources[i] = -1
@@ -355,6 +436,10 @@ class Armies:
 
     @staticmethod
     def calculate_edge(path, reverse=False):
+        """
+        A quick and dirty way generate a unique id for all directed edges
+        Note this will only work if there are less than 100 sectors. If there are more than 100 sectors we should just update this number to an even larger number
+        """
         if len(path) > 1:
             if reverse:
                 res = 100 * path[1] + path[0]
@@ -366,6 +451,9 @@ class Armies:
 
     @property
     def edges(self):
+        """
+        Calculates the directed edge that all armies are currently moving along if any.
+        """
         for i, path in enumerate(self.paths):
             if self.moving[i]:
                 self._edges[i] = 100 * path[0] + path[1]
@@ -375,6 +463,9 @@ class Armies:
 
     @property
     def paths_name(self):
+        """
+        Returns the name of the paths rather than the id.
+        """
         sources = []
         for path in self.paths:
             source = []
@@ -415,6 +506,9 @@ class Armies:
         return distances
 
     def get_hostiles(self, idx):
+        """
+        Returns a mask of all armies that are hostile to the army defined by idx
+        """
         m_faction = self.army_team_id == self.army_team_id[idx]
         m_allies = self.army_team_id == self.army_allies[idx]
         m_truce = self.army_team_id == self.army_truce[idx]
@@ -439,6 +533,9 @@ class Armies:
         return res
 
     def get_max_allowed_armies_in_sector(self, sector_id):
+        """
+        Finds the maximum allowed number of armies in a sector.
+        """
         owner = self.sectors.army_owner[sector_id:sector_id + 1]
         nn = list(self.sectors.G.neighbors(sector_id))
         nn_owners = self.sectors.army_owner[nn]
@@ -452,6 +549,10 @@ class Armies:
         return armies_allowed
 
     def respawn(self,army_id, sector_id):
+        """
+        Respawns an army in sector_id
+        if sector_id is None a random valid sector will be chosen
+        """
         team_id = self.army_team_id[army_id]
         m_team_sectors = self.sectors.team_owner == team_id
         team_sector_ids = self.sectors.ids[m_team_sectors]
@@ -485,6 +586,9 @@ class Armies:
         return alliance_armies_in_area
 
     def check_legal_move(self, id, path):
+        """
+        Check whether an army defined by id, is allowed to move along the path given
+        """
         team_id = self.army_team_id[id]
         dest = path[1]
         # check supplies is there enough to allow the army to move?
@@ -505,6 +609,11 @@ class Armies:
         return True
 
     def move_army(self, name, path_name):
+        """
+        Moves an army along a path
+        Note that this function is very old and ugly and should be rewritten.
+        The reason why this is so ugly is that it allows the path to be given in many different ways.
+        """
         try:
             name = self.names[int(name)]
         except:
@@ -577,6 +686,9 @@ class Armies:
         return
 
     def check_and_move_multiple_armies_in_same_sector(self,sector_id):
+        """
+        This function is used to move multiple armies all staying in the same sector. This is merely a visual effect such that all the armies are visible, but will not actually affect the armies in any other way.
+        """
         m_armies_in_area = self.sources == sector_id
         if np.sum(m_armies_in_area) > 1:
             # make sure to reposition all armies in m_armies_in_area
@@ -587,6 +699,10 @@ class Armies:
 
 
     def takeover_sector(self, army_id):
+        """
+        Army_id captures the sector they are currently in.
+
+        """
         location_id = self.paths[army_id][0]
         army_owner = self.army_team_id[army_id]
         sector_owner = self.sectors.army_owner[location_id]
@@ -603,12 +719,17 @@ class Armies:
             raise RequirementsNotMetError("Sector is currently getting captured.")
         elif np.sum(m_hostiles_in_area):  # There are other armies in the area
             raise RequirementsNotMetError("Hostiles in sector.")
+        elif self.moving[army_id]:
+            raise RequirementsNotMetError("The army cannot currently be moving when attempting to capture a sector")
         else:
             self.capturing[army_id] = True
             self.sectors.being_captured[location_id] = True
         return
 
     def time_step(self, dt):
+        """
+        Advances all armies by dt
+        """
         for i in range(self.n_teams):
             if self.truce_timer[i] > 0:
                 self.truce_timer[i] -= dt
@@ -708,6 +829,9 @@ class Armies:
                     self._speed_multiplier[i] = 1
 
     def draw_initial(self):
+        """
+        Draws the armies the first time.
+        """
         for i in range(len(self)):
             if len(self.paths[i]) > 1 and self.visible[i]:
                 s = self.paths[i][0]
@@ -722,6 +846,9 @@ class Armies:
                 plt.text(*xy, str(army_id), ha="center", va="center", size=self.army_size, bbox=self._army_boxes[-1]))
 
     def draw(self):
+        """
+        Updates the drawing of all armies.
+        """
         for i in range(len(self)):
             if len(self.paths[i]) > 1 and self.visible[i]:
                 s = self.paths[i][0]

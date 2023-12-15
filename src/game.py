@@ -574,6 +574,9 @@ class Vibinus:
             return f'Queued command: {command} {army_id} {command_args}'
 
     def run_game(self):
+        """
+        Runs the actual game
+        """
         logger.info("Starting game...")
         self._time0 = time.time()
         delta = self.delta
@@ -604,6 +607,9 @@ class Vibinus:
                 break
 
     def draw_game(self):
+        """
+        Draws the game the first time around
+        """
         # plt.cla()
         self.sectors.draw()
         self.armies.draw()
@@ -616,6 +622,9 @@ class Vibinus:
         plt.pause(0.01)
 
     def draw_game_updates(self):
+        """
+        Updates the drawing of the game
+        """
         self.armies.draw()
         # ax = plt.gca()
         plt.title(f"time = {self.t:4.0f}s")
