@@ -1,5 +1,6 @@
 import inspect
 import logging
+import os
 import pickle
 import random
 import time
@@ -46,6 +47,7 @@ class Vibinus:
         self._id_dict = dict(zip(self.usernames,self.ids))
         self.non_queueable_commands = ['help', 'list', 'pause', 'start','status', 'award_vp', 'ally', 'break_alliance', 'buy_stratagem', 'cancel', 'end_game','swap', 'retreat', 'speedup', 'respawn']
         self.queueable_commands = ['move', 'capture', 'rearm', 'give']
+        os.makedirs(os.path.dirname(self.filename), exist_ok=True)
 
     def save(self):
         with open(self.filename, 'wb') as outp:

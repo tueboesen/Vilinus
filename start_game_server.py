@@ -17,6 +17,7 @@ from conf.settings import COLORS, COSTS
 global game_running
 
 matplotlib.use('TkAgg')
+# plt.isinteractive()
 plt.figure(figsize=(16, 16), dpi=80)
 # plt.ion()
 

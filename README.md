@@ -3,6 +3,8 @@ Narative warhammer campaign simulation software
 
 ## Quick start
 
+
+
 ### Starting the server
 start_game_server.py starts a game server, which is required in order to join with clients.
 when running start_game_server.py it will print out the ip address and port of the server, which are needed for the clients to connect.
@@ -20,3 +22,11 @@ authentication.py provides the different login usernames/passwords and their acc
 Join using the start_game_client.py file
 
 	
+
+# Dev log
+
+## Game board is not showing, change to pygame perhaps?
+https://stackoverflow.com/questions/57316068/how-to-make-pygame-update-in-real-time
+
+## How to ensure we do not get a corruption of game state?
+Should we switch to a database instead?
