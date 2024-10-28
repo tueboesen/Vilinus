@@ -2,19 +2,24 @@ import networkx as nx
 import numpy as np
 import os.path
 
+import pygame
 from matplotlib import pyplot as plt
 
 from conf.settings import ROAD_SIZE
 from src.army import Armies
+from src.utils import CoordinateConverter
 
 
 class Sectors:
-    def __init__(self, sectors, edges, color_dict, image_path=None,death_id=0, armies: Armies = None, road_size=ROAD_SIZE):
+    def __init__(self, sectors, edges, color_dict, screen, image_path=None,death_id=0, armies: Armies = None, road_size=ROAD_SIZE):
+        self.alpha_val = 90
+        self.font = pygame.font.Font(None, 36)
         self.armies = armies
         self.sword_icon = plt.imread('icons/battle.png')
         self.capture_icon = plt.imread('icons/capture.png')
+        self.screen = screen
         if image_path:
-            self.image = plt.imread(image_path)
+            self.image = pygame.image.load(image_path)
         else:
             self.image = None
         n = len(sectors)
@@ -100,6 +105,8 @@ class Sectors:
         self.pos_shift = pos_shift
         self.road_size = road_size
         self.being_captured = np.zeros(n,dtype=bool)
+        width, height = screen.get_size()
+        self.coordinate_converter = CoordinateConverter(pixel_width=width, pixel_height=height)
 
     def __len__(self):
         return len(self.ids)
@@ -131,11 +138,22 @@ class Sectors:
     def draw(self):
         # nodes
         if self.image is not None:
+            bg_surface = pygame.Surface(self.screen.get_size())
+            bg_surface.blit(self.image, (0,0))
+            poly_surface = pygame.Surface(self.screen.get_size(), pygame.SRCALPHA)
             for i, polygon in enumerate(self.polygons_given):
                 if polygon:
-                    plt.fill(self.xps[i], self.yps[i], self.color_ids[self.armies.army_team_id[self.army_owner[i]]], alpha=0.3)
+                    coordinates = np.array([self.xps[i], self.yps[i]]).T
+                    pxl_coordinates = self.coordinate_converter.convert_coords_to_pxl(coordinates)
+                    color = self.color_ids[self.armies.army_team_id[self.army_owner[i]]] + (self.alpha_val,)
+                    pygame.draw.polygon(poly_surface, color, pxl_coordinates)
+                    # pygame.display.flip()
+                    # plt.fill(self.xps[i], self.yps[i], self.color_ids[self.armies.army_team_id[self.army_owner[i]]], alpha=0.3)
                     if self.armies.army_allies[self.army_owner[i]] != -1:
-                        plt.plot(self.xps[i],self.yps[i],self.color_ids[self.armies.army_allies[self.army_owner[i]]],alpha=0.3)
+                        color = self.color_ids[self.armies.army_allies[self.army_owner[i]]] + (self.alpha_val,)
+                        pygame.draw.lines(poly_surface, color, False, pxl_coordinates)
+                        # self.pygame.display.flip()
+                        # plt.plot(self.xps[i],self.yps[i],self.color_ids[self.armies.army_allies[self.army_owner[i]]],alpha=0.3)
                 if self.battle[i]:
                     icon = self.sword_icon
                 elif self.being_captured[i]:
@@ -148,13 +166,22 @@ class Sectors:
                     dy = 0.7
                     extent = [x-dx, x+dx, y-dy, y+dy]
                     plt.imshow(icon, zorder=1, extent=extent, alpha=0.8)
-
+            bg_surface.blit(poly_surface, (0,0))
+            # self.screen.blit(poly_surface, (0,0))
+            self.screen.blit(bg_surface, (0,0))
+            road_surface = pygame.Surface(self.screen.get_size(), pygame.SRCALPHA)
             for road,distance in zip(self.road_pos,self.road_len):
-                # plt.scatter(*road,zorder=2,c='black',alpha=0.3,s=30)
-                # plt.annotate(str(distance), xy=road)
-                bbox_props = dict(boxstyle="circle", fc="gray", ec="black", lw=2, alpha=0.5)
-                t = plt.text(*road, str(distance), ha="center", va="center",size=self.road_size, bbox=bbox_props)
-            plt.imshow(self.image, zorder=0, extent=[0.0, 10.0, 0.0, 10.0])
+                road_np = np.asarray(road)[None,:]
+                road_pxl = self.coordinate_converter.convert_coords_to_pxl(road_np)
+                # pygame.draw.lines(road_surface, (0,0,0,125), False, road_pxl)
+                text_surface = self.font.render(str(distance),False,(0,0,0,125))
+                road_surface.blit(text_surface,road_pxl[0])
+                self.screen.blit(road_surface, (0,0))
+                # pygame.display.flip()
+
+            pygame.display.flip()
+
+            # plt.imshow(self.image, zorder=0, extent=[0.0, 10.0, 0.0, 10.0])
         else:
             nx.draw_networkx_nodes(self.G, self.pos, node_size=3000, node_color=self.node_colors())
             # node labels

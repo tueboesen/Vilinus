@@ -17,7 +17,9 @@ class Armies:
     The armies class contains all information about all the armies present in a game.
 
     """
-    def __init__(self, teams, sectors, color_dict, credit_cost_dict, army_size=ARMY_SIZE):
+    def __init__(self, teams, sectors, color_dict, credit_cost_dict, army_size=ARMY_SIZE, screen=None, pygame=None):
+        self.pygame = pygame
+        self.screen = screen
         self._army_boxes = []
         self._army_texts = []
         n = 0
