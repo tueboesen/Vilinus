@@ -4,10 +4,11 @@ from ast import literal_eval
 
 import networkx as nx
 import numpy as np
+import pygame
 from matplotlib import pyplot as plt
 
 from conf.settings import ARMY_SIZE
-from src.utils import RequirementsNotMetError
+from src.utils import RequirementsNotMetError, draw_text, CoordinateConverter
 
 logger = logging.getLogger('vibinus')
 
@@ -17,9 +18,9 @@ class Armies:
     The armies class contains all information about all the armies present in a game.
 
     """
-    def __init__(self, teams, sectors, color_dict, credit_cost_dict, army_size=ARMY_SIZE, screen=None, pygame=None):
-        self.pygame = pygame
+    def __init__(self, teams, sectors, color_dict, credit_cost_dict, army_size=ARMY_SIZE, screen=None):
         self.screen = screen
+        self.font = pygame.font.Font(None, 36)
         self._army_boxes = []
         self._army_texts = []
         n = 0
@@ -94,6 +95,9 @@ class Armies:
         self.army_size = army_size
         self.respawn_len = 100 # Time it takes to respawn
         self.draw_initial()
+        width, height = screen.get_size()
+        self.coordinate_converter = CoordinateConverter(pixel_width=width, pixel_height=height)
+
 
     def speed(self, army_id):
         """
@@ -842,10 +846,15 @@ class Armies:
                 pos_dest = self.sectors.pos[d]
                 self.positions[i] = (pos_dest - pos_source) * self.progress[i] + pos_source
         pos = self.pos
+        army_surface = pygame.Surface(self.screen.get_size(), pygame.SRCALPHA)
         for army_id, xy in enumerate(self.positions):
-            self._army_boxes.append(dict(boxstyle="circle", fc="gray", ec=self.color_ids[army_id], lw=2, alpha=0.5))
-            self._army_texts.append(
-                plt.text(*xy, str(army_id), ha="center", va="center", size=self.army_size, bbox=self._army_boxes[-1]))
+            # self._army_boxes.append(dict(boxstyle="circle", fc="gray", ec=self.color_ids[army_id], lw=2, alpha=0.5))
+            # self._army_texts.append(
+            #     plt.text(*xy, str(army_id), ha="center", va="center", size=self.army_size, bbox=self._army_boxes[-1]))
+            draw_text(army_surface,str(army_id),self.font,False,self.color_ids[army_id]+(125,),x=xy[0],y=xy[1])
+        self.screen.blit(army_surface, (0,0))
+
+        # pygame.display.flip()
 
     def draw(self):
         """
@@ -859,10 +868,11 @@ class Armies:
                 pos_dest = self.sectors.pos[d]
                 self.positions[i] = (pos_dest - pos_source) * self.progress[i] + pos_source
         pos = self.pos
+        army_surface = pygame.Surface(self.screen.get_size(), pygame.SRCALPHA)
         for army_id, xy in enumerate(self.positions):
             if self.visible[army_id]:
-                tt = self._army_texts[army_id]
-                tt.set_x(xy[0])
-                tt.set_y(xy[1])
-        # nx.draw_networkx_nodes(self.G, self.pos, node_color=self.colors, edgecolors='black')
-        # nx.draw_networkx_labels(self.G, self.pos, font_size=10, font_family="sans-serif")
+                xy_pxl = self.coordinate_converter.convert_coords_to_pxl(xy[None,:])
+
+                # draw_text(army_surface, str(army_id), self.font, False, self.color_ids[army_id] + (125,), x=xy[0], y=xy[1])
+                draw_text(army_surface, str(army_id), self.font, False, (0,0,0,125), bg=(255,255,255,125), x=xy_pxl[0,0], y=xy_pxl[0,1])
+        self.screen.blit(army_surface, (0, 0))

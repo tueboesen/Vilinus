@@ -7,7 +7,7 @@ from matplotlib import pyplot as plt
 
 from conf.settings import ROAD_SIZE
 from src.army import Armies
-from src.utils import CoordinateConverter
+from src.utils import CoordinateConverter, draw_text
 
 
 class Sectors:
@@ -18,6 +18,7 @@ class Sectors:
         self.sword_icon = plt.imread('icons/battle.png')
         self.capture_icon = plt.imread('icons/capture.png')
         self.screen = screen
+        self.screen_width,self.screen_height = self.screen.get_size()
         if image_path:
             self.image = pygame.image.load(image_path)
         else:
@@ -174,12 +175,13 @@ class Sectors:
                 road_np = np.asarray(road)[None,:]
                 road_pxl = self.coordinate_converter.convert_coords_to_pxl(road_np)
                 # pygame.draw.lines(road_surface, (0,0,0,125), False, road_pxl)
-                text_surface = self.font.render(str(distance),False,(0,0,0,125))
-                road_surface.blit(text_surface,road_pxl[0])
-                self.screen.blit(road_surface, (0,0))
-                # pygame.display.flip()
-
-            pygame.display.flip()
+                draw_text(road_surface,str(distance),self.font,False,(0,0,0,125),x=road_pxl[0,0],y=road_pxl[0,1])
+                # text = self.font.render(str(distance),True,(0,0,0,125))
+                # text_rect = text.get_rect(center=(self.screen_width / 2, self.screen_height / 2))
+                # screen.blit(text, text_rect)
+                # road_surface.blit(text,text_rect)
+                # road_surface.blit(text,road_pxl[0])
+            self.screen.blit(road_surface, (0,0))
 
             # plt.imshow(self.image, zorder=0, extent=[0.0, 10.0, 0.0, 10.0])
         else:

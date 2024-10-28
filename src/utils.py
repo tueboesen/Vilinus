@@ -1,4 +1,5 @@
 import numpy as np
+import pygame
 
 
 class InsufficientAccessError(Exception):
@@ -33,4 +34,34 @@ class CoordinateConverter:
         output_coords = np.array([x, y]).T
         return output_coords
 
+def draw_text(_window: pygame.Surface, text: str, font: pygame.font.Font, aa: bool, fg: str ,
+              x: int | float, y: int | float, centered_x: bool=False, centered_y: bool=False, bg: str = None) -> None:
+    """
+    Function to draw text on window
 
+    :param _window: window to draw text on (pygame.Surface)
+    :param text: text to draw on window (str)
+    :param font: font to render the text with (pygame.font.Font)
+    :param aa: use antialiasing (bool)
+    :param fg: foreground color (str)
+    :param bg: background color (str)
+    :param x: x coordinate of window to draw text on (int | float)
+    :param y: y coordinate of window to draw text on (int | float)
+    :param centered_x: center in the x-axis (bool)
+    :param centered_y: center in the y-axis (bool)
+    :return: None
+    """
+
+    text = font.render(text, aa, fg, bg)
+    text_position = x, y
+
+    if centered_x or centered_y:
+        text_position = text.get_rect()
+    if centered_x:
+        text_position.y += y
+        text_position.centerx = _window.get_rect().centerx
+    if centered_y:
+        text_position.x += x
+        text_position.centery = _window.get_rect().centery
+
+    _window.blit(text, text_position)

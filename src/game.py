@@ -7,7 +7,7 @@ import time
 from time import sleep
 
 import numpy as np
-from matplotlib import pyplot as plt
+import pygame
 
 from src.utils import InsufficientAccessError, RequirementsNotMetError
 
@@ -50,9 +50,10 @@ class Vibinus:
         os.makedirs(os.path.dirname(self.filename), exist_ok=True)
 
     def save(self):
-        with open(self.filename, 'wb') as outp:
-            pickle.dump(self, outp, pickle.HIGHEST_PROTOCOL)
-        logger.debug(f"saved state to {self.filename}")
+        pass
+        # with open(self.filename, 'wb') as outp:
+        #     pickle.dump(self, outp, pickle.HIGHEST_PROTOCOL)
+        # logger.debug(f"saved state to {self.filename}")
 
     @staticmethod
     def load(filename):
@@ -595,7 +596,7 @@ class Vibinus:
                 self.armies.time_step(dt)
                 self.sectors.time_step(dt)
                 if self.draw:
-                    self.draw_game_updates()
+                    self.draw_game()
                 if (self.t - self._t_last_save) > self.autosave_every_n_seconds:
                     self.save()
                     self._t_last_save = self.t
@@ -615,13 +616,15 @@ class Vibinus:
         # plt.cla()
         self.sectors.draw()
         self.armies.draw()
-        ax = plt.gca()
-        plt.title(f"time = {self.t:4.1f}s")
-        ax.margins(0.08)
-        plt.axis("off")
-        plt.tight_layout()
+        pygame.display.set_caption(f'Vibinus: {self.t:4.0f}s')
+        pygame.display.flip()
+        # ax = plt.gca()
+        # plt.title(f"time = {self.t:4.1f}s")
+        # ax.margins(0.08)
+        # plt.axis("off")
+        # plt.tight_layout()
         # plt.show()
-        plt.pause(0.01)
+        # plt.pause(0.01)
 
     def draw_game_updates(self):
         """
@@ -629,12 +632,12 @@ class Vibinus:
         """
         self.armies.draw()
         # ax = plt.gca()
-        plt.title(f"time = {self.t:4.0f}s")
+        # plt.title(f"time = {self.t:4.0f}s")
         # ax.margins(0.08)
         # plt.axis("off")
         # plt.tight_layout()
         # plt.show()
-        plt.pause(0.01)
+        # plt.pause(0.01)
 
 
 

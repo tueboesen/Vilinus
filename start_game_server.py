@@ -45,7 +45,7 @@ if __name__ == '__main__':
 
 
     sectors = Sectors(zones, edges=roads, image_path=image_path, color_dict=COLORS_RGB, screen=screen)
-    armies = Armies(teams, sectors, color_dict=COLORS, credit_cost_dict=COSTS)
+    armies = Armies(teams, sectors, color_dict=COLORS_RGB, credit_cost_dict=COSTS, screen=screen)
     sectors.armies = armies
     armies.set_ally(0,3)
     armies.set_ally(3,0)
