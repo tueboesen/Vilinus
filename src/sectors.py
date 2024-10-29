@@ -15,8 +15,10 @@ class Sectors:
         self.alpha_val = 90
         self.font = pygame.font.Font(None, 36)
         self.armies = armies
-        self.sword_icon = plt.imread('icons/battle.png')
-        self.capture_icon = plt.imread('icons/capture.png')
+        # self.sword_icon = plt.imread('icons/battle.png')
+        # self.capture_icon = plt.imread('icons/capture.png')
+        self.sword_icon = pygame.image.load('icons/battle.png')
+        self.capture_icon = pygame.image.load('icons/capture.png')
         self.screen = screen
         self.screen_width,self.screen_height = self.screen.get_size()
         if image_path:
@@ -163,10 +165,10 @@ class Sectors:
                     icon = None
                 if icon is not None:
                     x,y = self.pos[i]
-                    dx = 0.7
-                    dy = 0.7
-                    extent = [x-dx, x+dx, y-dy, y+dy]
-                    plt.imshow(icon, zorder=1, extent=extent, alpha=0.8)
+                    xy = self.coordinate_converter.convert_coords_to_pxl(np.array([[x,y]]))[0]
+                    poly_surface.blit(icon, xy)
+
+
             bg_surface.blit(poly_surface, (0,0))
             # self.screen.blit(poly_surface, (0,0))
             self.screen.blit(bg_surface, (0,0))

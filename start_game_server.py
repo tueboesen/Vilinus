@@ -50,7 +50,7 @@ if __name__ == '__main__':
     armies.set_ally(0,3)
     armies.set_ally(3,0)
 
-    armies.move_army('gandalf',2)
+    armies.move_army('gandalf',6)
     file_checkpoint = 'data/vibinus_gamestate.pkl'
     game = Vibinus(sectors=sectors,armies=armies,auth_dict=auth_dict,file=file_checkpoint, draw=draw_game)
 

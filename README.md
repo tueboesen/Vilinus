@@ -25,8 +25,14 @@ Join using the start_game_client.py file
 
 # Dev log
 
-## Game board is not showing, change to pygame perhaps?
-https://stackoverflow.com/questions/57316068/how-to-make-pygame-update-in-real-time
+## Autosave
+We need to make some kind of autosave feature, so that the game state is saved every n seconds. This is to prevent the game from being lost if the server crashes.
+Before it was just pickling down the game state, but this does not work with pygame, so we should just pickle down the things that needs to be saved and then recreate the game state when loading the game.
+Also we should add rotations to the autosave feature such that it does not directly overwrite the last autosave file, but instead rotates between a few files. This is to prevent the autosave from being corrupted if the server crashes while saving.
 
-## How to ensure we do not get a corruption of game state?
-Should we switch to a database instead?
+## Things are not very pretty and the code could use another refactoring.
+After I switched to pygame quite a few things are not as pretty as they could be.
+- The ui logic should be separated from the game logic
+- The coordinate to pixel converter should be loaded only once and not for both army and sector, and it should also work for just a single coordinate pair
+- The world should perhaps have roads or other items on it as well?
+- We should probably move more things to settings files, and also use argparser for the server and client.
