@@ -26,7 +26,7 @@ teams += [["Neutral", [('God', 'Death', 1.0, 999999.0, False)]]]
 
 
 if __name__ == '__main__':
-    image_name = 'world.jpg'
+    image_name = 'small_world.jpg'
 
     img = plt.imread(image_name)
 

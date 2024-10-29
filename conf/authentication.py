@@ -22,7 +22,7 @@ is an authentication dictionary with only one user in it.
 
 Another example is:
 auth_dict = {'god': ("hemmeligt", 0, -1, -1)}
-the user god has access level 0 (admin), he does not belong to any team and does not control any particular army. (but can control all of them)
+the user god has access level 0 (admin), he does not belong to any team and does not control any particular army. (but can control all of them through his admin access)
 
 """
 

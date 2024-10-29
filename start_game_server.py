@@ -1,7 +1,5 @@
 import threading
 
-# import matplotlib
-# from matplotlib import pyplot as plt
 import logging
 from src.army import Armies
 from conf.authentication import auth_dict
@@ -15,13 +13,6 @@ import pygame
 # from conf.world_middle_earth import zones, roads, teams
 
 global game_running
-
-# matplotlib.use('TkAgg')
-# plt.isinteractive()
-# plt.figure(figsize=(16, 16), dpi=80)
-# plt.ion()
-
-# matplotlib.use('mkTkinter')
 
 if __name__ == '__main__':
     draw_game = True
@@ -38,7 +29,6 @@ if __name__ == '__main__':
         width = img.get_width()
         height = img.get_height()
     screen = pygame.display.set_mode((width, height))
-    # screen.fill((205, 255, 255,128))
 
     pygame.display.set_caption('Vibinus')
     pygame.display.flip()
